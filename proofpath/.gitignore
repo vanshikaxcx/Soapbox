@@ -1,0 +1,43 @@
+# Secrets / environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Node / web
+node_modules/
+web/dist/
+web/.vite/
+
+# AWS SAM
+.aws-sam/
+samconfig.toml
+
+# Browser sessions / Playwright
+.spike/
+.evidence/
+**/playwright-report/
+**/test-results/
+web/.playwright/
+
+# Captured media, exports, personal data — must never be committed
+*.wav
+*.mp3
+recordings/
+exports/
+captures/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

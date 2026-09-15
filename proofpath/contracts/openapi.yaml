@@ -1,0 +1,130 @@
+openapi: 3.1.0
+info:
+  title: ProofPath API
+  version: 0.1.0
+  description: >
+    Baseline contract (WP-00). Only the health route and shared envelope/error
+    schemas are established here. Each subsequent work package (WP-03, WP-05,
+    WP-06, WP-08, WP-09, WP-10) adds its own paths and schemas under the same
+    conventions and gets sign-off from affected owners + P4 before merging.
+
+servers:
+  - url: /
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness/readiness check. Unauthenticated.
+      responses:
+        "200":
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+components:
+  schemas:
+    RequestId:
+      type: string
+      description: Opaque correlation ID, present on every response.
+
+    Timestamp:
+      type: string
+      format: date-time
+      description: UTC ISO-8601 with Z suffix, e.g. 2026-09-15T13:25:44.293186Z.
+
+    OpaqueId:
+      type: string
+      description: Server-generated opaque ID. Never client-supplied for server-owned records.
+      pattern: "^[0-9A-HJKMNP-TV-Z]{26}$"
+
+    MoneyPaise:
+      type: integer
+      description: Integer INR paise. Never a float/decimal field.
+      minimum: 0
+
+    ErrorCode:
+      type: string
+      enum:
+        - validation_error
+        - conflict
+        - stale_version
+        - expired
+        - not_found
+        - unauthorized
+        - forbidden
+        - rate_limited
+        - internal_error
+
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        message:
+          type: string
+        details:
+          type: object
+          nullable: true
+
+    ErrorEnvelope:
+      type: object
+      required: [error, request_id]
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    HealthResponse:
+      type: object
+      required: [data, request_id]
+      properties:
+        data:
+          type: object
+          required: [status, time]
+          properties:
+            status:
+              type: string
+              enum: [ok]
+            time:
+              $ref: "#/components/schemas/Timestamp"
+        request_id:
+          $ref: "#/components/schemas/RequestId"
+
+    JobStatus:
+      type: object
+      description: Shape every async-command status response follows (WP-07 implements the real data).
+      required: [job_id, resource_id, status]
+      properties:
+        job_id:
+          $ref: "#/components/schemas/OpaqueId"
+        resource_id:
+          $ref: "#/components/schemas/OpaqueId"
+        status:
+          type: string
+          enum: [pending, running, succeeded, failed]
+        error:
+          type: string
+          nullable: true
+
+  headers:
+    IdempotencyKey:
+      description: Required on every mutating request. Same key + different payload -> 409.
+      schema:
+        type: string
+
+  parameters:
+    ExpectedVersion:
+      name: expected_version
+      in: query
+      required: false
+      description: >
+        Mutating endpoints accept this (or expected_revision) in the body per
+        the resource's own schema; documented here as a shared convention,
+        not a literal shared parameter.
+      schema:
+        type: integer
