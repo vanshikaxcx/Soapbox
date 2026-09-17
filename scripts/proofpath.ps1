@@ -84,11 +84,31 @@ function Show-Versions {
     }
 }
 
-function Install-Gitleaks {
+function Get-GitleaksInstallRoot {
     $toolRoot = Join-Path $script:RepositoryRoot ".tools"
-    $installRoot = Join-Path $toolRoot "gitleaks-$script:GitleaksVersion"
+    return Join-Path $toolRoot "gitleaks-$script:GitleaksVersion"
+}
+
+function Get-GitleaksBinaryPath {
     $binaryName = if ($IsWindows) { "gitleaks.exe" } else { "gitleaks" }
-    $binary = Join-Path $installRoot $binaryName
+    return Join-Path (Get-GitleaksInstallRoot) $binaryName
+}
+
+function Install-Gitleaks {
+    $installRoot = Get-GitleaksInstallRoot
+    $toolRoot = Split-Path -Parent $installRoot
+    $binary = Get-GitleaksBinaryPath
+
+    # Fast path: a binary already verified earlier in this same run/host needs
+    # no re-download, re-hash, or re-extraction. `setup` and `security` both
+    # call Install-Gitleaks; without this, every run pays that cost twice.
+    if (Test-Path -LiteralPath $binary -PathType Leaf) {
+        $existingVersionOutput = & $binary version 2>&1
+        if ($LASTEXITCODE -eq 0 -and (Get-SemanticVersion -Value ($existingVersionOutput | Out-String)) -eq $script:GitleaksVersion) {
+            Write-Output "Gitleaks $script:GitleaksVersion already installed and verified; skipping re-download."
+            return
+        }
+    }
 
     $platform = if ($IsWindows) { "windows" } elseif ($IsMacOS) { "darwin" } elseif ($IsLinux) { "linux" } else { throw "Unsupported Gitleaks host platform." }
     $architecture = switch ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture) {
@@ -107,30 +127,30 @@ function Install-Gitleaks {
     if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) {
         Invoke-WebRequest -Uri "$release/$archiveName" -OutFile $archive
     }
-    Invoke-WebRequest -Uri "$release/$checksumsName" -OutFile $checksums
+    if (-not (Test-Path -LiteralPath $checksums -PathType Leaf)) {
+        Invoke-WebRequest -Uri "$release/$checksumsName" -OutFile $checksums
+    }
     $line = Select-String -LiteralPath $checksums -Pattern ([regex]::Escape($archiveName)) | Select-Object -First 1
     if ($null -eq $line) { throw "Published Gitleaks checksums did not include $archiveName." }
     $expectedHash = ([regex]::Match($line.Line, "[A-Fa-f0-9]{64}")).Value.ToLowerInvariant()
     $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($expectedHash.Length -ne 64 -or $actualHash -ne $expectedHash) { throw "Gitleaks archive checksum verification failed." }
+    if ($expectedHash.Length -ne 64 -or $actualHash -ne $expectedHash) {
+        # Delete the corrupted cache so the next invocation re-downloads
+        # instead of deterministically failing forever on a truncated file.
+        Remove-Item -LiteralPath $archive, $checksums -Force -ErrorAction SilentlyContinue
+        throw "Gitleaks archive checksum verification failed; the cached download was removed, retry to re-download."
+    }
     if ($extension -eq "zip") { Expand-Archive -LiteralPath $archive -DestinationPath $installRoot -Force }
     else {
         & tar -xzf $archive -C $installRoot
         if ($LASTEXITCODE -ne 0) { throw "Unable to extract Gitleaks archive." }
     }
-    if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw "Gitleaks archive did not include $binaryName." }
+    if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw "Gitleaks archive did not include $(Split-Path -Leaf $binary)." }
     $binaryVersion = & $binary version 2>&1
     if ($LASTEXITCODE -ne 0 -or (Get-SemanticVersion -Value ($binaryVersion | Out-String)) -ne $script:GitleaksVersion) {
         throw "Cached Gitleaks binary did not report the required version $script:GitleaksVersion."
     }
     Write-Output "Gitleaks $script:GitleaksVersion archive checksum and cached binary version verified."
-}
-
-function Get-GitleaksBinaryPath {
-    $toolRoot = Join-Path $script:RepositoryRoot ".tools"
-    $installRoot = Join-Path $toolRoot "gitleaks-$script:GitleaksVersion"
-    $binaryName = if ($IsWindows) { "gitleaks.exe" } else { "gitleaks" }
-    return Join-Path $installRoot $binaryName
 }
 
 function Invoke-Setup {
@@ -375,25 +395,162 @@ function Invoke-Stage5WebSmoke {
     }
 }
 
+function Get-SuppressionManifestPath {
+    return Join-Path $script:RepositoryRoot "security/suppressions.toml"
+}
+
+function Get-ActiveSuppressions {
+    # Minimal reviewed-suppression manifest parser. The manifest holds only
+    # `[[suppression]]` tables with flat string keys; this is intentionally not
+    # a general TOML parser, since the schema is small, fixed, and controlled
+    # by this repository (see security/suppressions.toml for the schema).
+    $manifestPath = Get-SuppressionManifestPath
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        throw "Suppression manifest not found at $manifestPath."
+    }
+    $requiredKeys = @("tool", "id", "scope", "reason", "owner", "approval", "expires")
+    $entries = @()
+    $current = $null
+    foreach ($rawLine in Get-Content -LiteralPath $manifestPath) {
+        $line = $rawLine.Trim()
+        if ($line -eq "" -or $line.StartsWith("#")) { continue }
+        if ($line -eq "[[suppression]]") {
+            if ($null -ne $current) { $entries += , $current }
+            $current = @{}
+            continue
+        }
+        # Supports backslash-escaped quotes/backslashes inside the value, since
+        # TOML basic strings allow them (e.g. reason = "a \"vulnerable\" path").
+        $match = [regex]::Match($line, '^(\w+)\s*=\s*"((?:[^"\\]|\\.)*)"$')
+        if (-not $match.Success) { throw "Unparseable suppression manifest line: $rawLine" }
+        if ($null -eq $current) { throw "Suppression manifest key '$($match.Groups[1].Value)' found outside a [[suppression]] table." }
+        $unescaped = $match.Groups[2].Value.Replace('\"', '"').Replace('\\', '\')
+        $current[$match.Groups[1].Value] = $unescaped
+    }
+    if ($null -ne $current) { $entries += , $current }
+
+    $enforcedTools = @("pip-audit")
+    $documentationOnlyTools = @("gitleaks", "npm-audit")
+    $knownTools = $enforcedTools + $documentationOnlyTools
+    $today = [DateTime]::UtcNow.Date
+    $active = @()
+    foreach ($entry in $entries) {
+        foreach ($key in $requiredKeys) {
+            if (-not $entry.ContainsKey($key) -or [string]::IsNullOrWhiteSpace($entry[$key])) {
+                throw "Suppression manifest entry is missing required field '$key'."
+            }
+        }
+        if ($knownTools -notcontains $entry.tool) {
+            throw "Suppression '$($entry.id)' names unknown tool '$($entry.tool)'; expected one of: $($knownTools -join ', ')."
+        }
+        $expiry = [DateTime]::ParseExact($entry.expires, "yyyy-MM-dd", [System.Globalization.CultureInfo]::InvariantCulture)
+        if ($expiry.Date -lt $today) {
+            throw "Suppression '$($entry.id)' for $($entry.tool) expired on $($entry.expires); remove it or file a newly approved, re-dated entry instead of relying on an expired suppression."
+        }
+        if ($documentationOnlyTools -contains $entry.tool) {
+            Write-Output "Suppression '$($entry.id)' for $($entry.tool) is reviewed documentation only; it does not change $($entry.tool)'s pass/fail behavior (see security/suppressions.toml)."
+        }
+        $active += , $entry
+    }
+    # Force array semantics on return: an empty PowerShell array unrolls to zero
+    # output objects, which callers would otherwise receive as $null instead of
+    # an empty collection.
+    return , $active
+}
+
+function Test-IgnoreSentinels {
+    # Disposable, unmistakably-fake sentinel files under representative
+    # .gitignore patterns, proving both that sensitive paths stay ignored and
+    # that tracked example templates stay trackable (WP-00 AC-00-19). Every
+    # sentinel is created and deleted here; none is ever `git add`ed.
+    $sentinelPaths = @(
+        ".env.local",
+        "raw-audio/FAKE-SENTINEL-DO-NOT-USE.wav",
+        "private-evidence/FAKE-SENTINEL-DO-NOT-USE.txt",
+        ".aws-sam/build/FAKE-SENTINEL-DO-NOT-USE.txt",
+        ".tools/FAKE-SENTINEL-DO-NOT-USE.txt"
+    )
+    $trackedTemplatePaths = @(
+        ".env.example",
+        "web/.env.example"
+    )
+    $created = @()
+    $createdDirectories = @()
+    Push-Location -LiteralPath $script:RepositoryRoot
+    try {
+        foreach ($relativePath in $sentinelPaths) {
+            $fullPath = Join-Path $script:RepositoryRoot $relativePath
+            $directory = Split-Path -Parent $fullPath
+            if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+                New-Item -ItemType Directory -Force -Path $directory | Out-Null
+                $createdDirectories += , $directory
+            }
+            Set-Content -LiteralPath $fullPath -Value "FAKE-SENTINEL-DO-NOT-USE: disposable ignore-rule test content, not a real secret." -NoNewline
+            $created += $fullPath
+            & git check-ignore --quiet -- $relativePath
+            $checkIgnoreExitCode = $LASTEXITCODE
+            if ($checkIgnoreExitCode -eq 1) {
+                throw "Ignore-rule sentinel check failed: expected '$relativePath' to be ignored by .gitignore, but git check-ignore reported it is not."
+            }
+            elseif ($checkIgnoreExitCode -ne 0) {
+                throw "Ignore-rule sentinel check failed: 'git check-ignore -- $relativePath' exited $checkIgnoreExitCode, a fatal git error rather than a not-ignored result."
+            }
+        }
+        foreach ($relativePath in $trackedTemplatePaths) {
+            $fullPath = Join-Path $script:RepositoryRoot $relativePath
+            if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
+                throw "Ignore-rule sentinel check failed: expected tracked example template '$relativePath' to exist."
+            }
+            & git check-ignore --quiet -- $relativePath
+            if ($LASTEXITCODE -eq 0) {
+                throw "Ignore-rule sentinel check failed: expected tracked example template '$relativePath' to remain trackable, but git check-ignore reported it is ignored."
+            }
+        }
+        Write-Output "Ignore-rule sentinel checks passed: $($sentinelPaths.Count) sensitive sentinel path(s) ignored, $($trackedTemplatePaths.Count) tracked example template(s) confirmed trackable."
+    }
+    finally {
+        foreach ($fullPath in $created) {
+            Remove-Item -LiteralPath $fullPath -Force -ErrorAction SilentlyContinue
+        }
+        foreach ($directory in ($createdDirectories | Sort-Object -Property Length -Descending)) {
+            if ((Test-Path -LiteralPath $directory -PathType Container) -and -not (Get-ChildItem -LiteralPath $directory -Force -ErrorAction SilentlyContinue)) {
+                Remove-Item -LiteralPath $directory -Force -ErrorAction SilentlyContinue
+            }
+        }
+        Pop-Location
+    }
+}
+
 function Invoke-Stage6Security {
     Install-Gitleaks
     $gitleaksBinary = Get-GitleaksBinaryPath
+    $activeSuppressions = Get-ActiveSuppressions
+    $pipAuditIgnoreArgs = @()
+    foreach ($entry in $activeSuppressions) {
+        if ($entry.tool -eq "pip-audit") { $pipAuditIgnoreArgs += @("--ignore-vuln", $entry.id) }
+    }
     Push-Location -LiteralPath $script:RepositoryRoot
     try {
         & $gitleaksBinary detect --source . --redact --exit-code 1
         if ($LASTEXITCODE -ne 0) { throw "Gitleaks detected a potential secret in repository history." }
 
-        & uv run --frozen pip-audit --requirement services/api/requirements.txt
+        & uv run --frozen pip-audit --requirement services/api/requirements.txt @pipAuditIgnoreArgs
         if ($LASTEXITCODE -ne 0) { throw "pip-audit found a finding in services/api/requirements.txt." }
 
-        & uv run --frozen pip-audit
+        & uv run --frozen pip-audit @pipAuditIgnoreArgs
         if ($LASTEXITCODE -ne 0) { throw "pip-audit found a finding in the frozen uv development environment." }
 
+        # npm 12's `npm audit` has no clean per-vulnerability CLI suppression
+        # flag; a reviewed npm-audit entry in security/suppressions.toml is
+        # tracked as documentation of an approved, expiring exception only,
+        # and does not change this command's pass/fail behavior.
         & npm --prefix web audit
         if ($LASTEXITCODE -ne 0) { throw "npm --prefix web audit found a finding in web dependencies." }
+
+        Test-IgnoreSentinels
     }
     finally { Pop-Location }
-    Write-Output "Gitleaks history scan, pip-audit (production export and frozen development environment), and npm audit passed with no unreviewed finding."
+    Write-Output "Gitleaks history scan, pip-audit (production export and frozen development environment), npm audit, and ignore-rule sentinel checks passed with no unreviewed finding."
 }
 
 function Assert-CleanTrackedTree {
@@ -448,7 +605,10 @@ build, dev, web-smoke, security, verify-gate-a, verify-clean-clone
 
 security: runs the checksum-verified native Gitleaks history scan, pip-audit
 against services/api/requirements.txt and the frozen uv development
-environment, and npm --prefix web audit; fails on any unreviewed finding.
+environment, npm --prefix web audit, and disposable ignore-rule sentinel
+checks against .gitignore; fails on any unreviewed finding. Non-expired
+entries in security/suppressions.toml narrowly suppress named pip-audit
+findings; an expired entry fails the command instead of silently suppressing.
 
 verify-gate-a: runs all non-mutating version, lock/generation, format, lint,
 type, test, security, build, and Chromium smoke checks, then asserts the

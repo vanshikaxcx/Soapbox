@@ -1,0 +1,57 @@
+name: Set up ProofPath toolchain
+description: >-
+  Checks out the repository and installs the pinned Node.js, uv/Python, and
+  (optionally) SAM CLI toolchain shared by every checks.yml job.
+
+inputs:
+  node-version:
+    description: Pinned Node.js version.
+    required: true
+  uv-version:
+    description: Pinned uv version.
+    required: true
+  python-version:
+    description: Pinned Python version.
+    required: true
+  sam-version:
+    description: Pinned SAM CLI version (only used when setup-sam is true).
+    required: false
+    default: ""
+  full-history:
+    description: Check out full Git history (required by Gitleaks in the security job).
+    required: false
+    default: "false"
+  setup-sam:
+    description: Whether to install SAM CLI (only jobs that invoke sam need this).
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        # Numeric 0 is falsy in GitHub Actions && / || chains, so a bare
+        # `... && 0 || 1` ternary always resolves to 1 regardless of the
+        # condition. Use truthy string literals and cast back with fromJSON.
+        fetch-depth: ${{ fromJSON(inputs.full-history == 'true' && '0' || '1') }}
+        persist-credentials: false
+    - name: Set up Node.js
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+        cache-dependency-path: web/package-lock.json
+    - name: Set up uv and Python
+      uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      with:
+        version: ${{ inputs.uv-version }}
+        python-version: ${{ inputs.python-version }}
+        enable-cache: true
+    - name: Set up SAM CLI
+      if: inputs.setup-sam == 'true'
+      uses: aws-actions/setup-sam@89ddb14d60e682855e3fea4be85b3c56485de310 # v3 (resolved 2026-09-17, see checks.yml env comment)
+      with:
+        version: ${{ inputs.sam-version }}
+        use-installer: true

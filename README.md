@@ -57,7 +57,9 @@ The containerized SAM build uses an exact, repository-controlled build image: `p
 pwsh ./scripts/proofpath.ps1 security
 ```
 
-`security` runs the checksum-verified native Gitleaks history scan, `pip-audit` against both `services/api/requirements.txt` and the complete frozen `uv` development environment, and `npm --prefix web audit`; it fails on any unreviewed finding. `.github/workflows/checks.yml` runs the same command surface (`openapi-check`, `format-check`/`lint`/`typecheck`, `test`, `build`, `security`, `web-smoke`) as required named CI jobs on `ubuntu-24.04`, using pinned action commit SHAs and no AWS or LocalStack credentials.
+`security` runs the checksum-verified native Gitleaks history scan, `pip-audit` against both `services/api/requirements.txt` and the complete frozen `uv` development environment, `npm --prefix web audit`, and disposable ignore-rule sentinel checks against `.gitignore`; it fails on any unreviewed finding. `.github/workflows/checks.yml` runs the same command surface (`openapi-check`, `format-check`/`lint`/`typecheck`, `test`, `build`, `security`, `web-smoke`) as required named CI jobs on `ubuntu-24.04`, using pinned action commit SHAs and no AWS or LocalStack credentials.
+
+Any vulnerability or secret-scanner suppression must be recorded in [`security/suppressions.toml`](security/suppressions.toml) with an advisory/rule ID, narrow scope, reason, owner, approval reference, and explicit expiry date; the manifest starts empty, an expired entry fails `security` outright, and blanket or unaudited suppressions are forbidden.
 
 ### Gate A verification
 
