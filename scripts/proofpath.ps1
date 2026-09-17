@@ -104,7 +104,12 @@ function Install-Gitleaks {
     # call Install-Gitleaks; without this, every run pays that cost twice.
     if (Test-Path -LiteralPath $binary -PathType Leaf) {
         $existingVersionOutput = & $binary version 2>&1
-        if ($LASTEXITCODE -eq 0 -and (Get-SemanticVersion -Value ($existingVersionOutput | Out-String)) -eq $script:GitleaksVersion) {
+        $existingVersion = $null
+        if ($LASTEXITCODE -eq 0) {
+            try { $existingVersion = Get-SemanticVersion -Value ($existingVersionOutput | Out-String) }
+            catch { $existingVersion = $null }
+        }
+        if ($existingVersion -eq $script:GitleaksVersion) {
             Write-Output "Gitleaks $script:GitleaksVersion already installed and verified; skipping re-download."
             return
         }
@@ -228,11 +233,19 @@ function Invoke-OpenApiCheck {
         if ($LASTEXITCODE -ne 0) { throw "SAM template validation failed." }
     }
     Invoke-OpenApiGeneration -Paths $paths
-    $requirements = "services/api/requirements.txt"
-    & uv export --locked --no-dev --no-emit-project --format requirements-txt --output-file $requirements
-    if ($LASTEXITCODE -ne 0) { throw "Locked production requirements export failed." }
-    & git diff --exit-code -- $paths.Generated $requirements
-    if ($LASTEXITCODE -ne 0) { throw "Generated OpenAPI declarations or SAM requirements have drifted." }
+    # Run from the repository root: `uv export --output-file` embeds the exact
+    # path it was given into the generated file's own header comment, so this
+    # must stay the same repo-root-relative literal the tracked file already
+    # contains, not an absolute path, or every run looks like spurious drift.
+    Push-Location -LiteralPath $script:RepositoryRoot
+    try {
+        $requirements = "services/api/requirements.txt"
+        & uv export --locked --no-dev --no-emit-project --format requirements-txt --output-file $requirements
+        if ($LASTEXITCODE -ne 0) { throw "Locked production requirements export failed." }
+        & git diff --exit-code -- $paths.Generated $requirements
+        if ($LASTEXITCODE -ne 0) { throw "Generated OpenAPI declarations or SAM requirements have drifted." }
+    }
+    finally { Pop-Location }
     Write-Output "OpenAPI schema, AWS/SAM subset, SAM wrapper, and generated declarations passed Stage 3 checks."
 }
 

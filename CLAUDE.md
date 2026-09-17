@@ -292,13 +292,13 @@ A change to a settled product/architecture decision or a switch away from Ship I
 
 ## Commands
 
-No executable project commands are established yet. WP-00 must create and verify setup, development, formatting, linting, type-checking, testing, OpenAPI generation, build, infrastructure, deployment, and E2E commands.
+WP-00 established and verified this command surface, run through `pwsh ./scripts/proofpath.ps1 <command>` from the repository root:
 
-Until configuration exists:
+`help`, `versions`, `setup`, `openapi-generate`, `openapi-check`, `format`, `format-check`, `lint`, `typecheck`, `test-unit`, `test-contract`, `test-integration`, `test`, `build`, `dev`, `web-smoke`, `security`, `verify-gate-a`, `verify-clean-clone`.
 
-- do not invent commands from the planned script names in the specification;
-- inspect current repository configuration before running a project command;
-- update this section only with commands that exist and have been verified against repository files.
+`verify-gate-a` runs the full non-mutating gate (versions, openapi-check, format-check, lint, typecheck, test, security, build, web-smoke) and asserts a clean tracked tree. `verify-clean-clone` runs `setup` then `verify-gate-a` from a documented fresh clone. `security` runs the checksum-verified Gitleaks history scan, pip-audit, npm audit, and ignore-rule sentinel checks. Real GitHub Actions CI (`checks.yml`) currently has two known-red jobs (`build`, `web-smoke`) blocked on unauthenticated `public.ecr.aws` pulls being rate-limited on GitHub-hosted runners — see `docs/STATUS.md`'s WP-00 row; this is tracked to close via WP-01's AWS OIDC setup, not a WP-00 code defect.
+
+No infrastructure, deployment, or E2E-beyond-baseline command exists yet; those remain reserved for their owning WP. Do not invent commands beyond this list. Update this section only with commands that exist and have been verified against repository files.
 
 ## Task completion checklist
 

@@ -7,6 +7,7 @@
 /services/simulator/ @a-for-aarushi
 /services/adapters/ @SparshJain769
 /services/workers/ @SparshJain769
+/services/application/ @SparshJain769
 /infra/ @SparshJain769
 /policies/ @SparshJain769
 /.github/ @SparshJain769
@@ -25,7 +26,12 @@
 /docs/specs/WP-12-*.md @SparshJain769
 /contracts/openapi.yaml @SparshJain769
 /tests/e2e/ @vanshikaxcx
+/tests/unit/ @SparshJain769
+/tests/contracts/ @SparshJain769
+/tests/integration/ @SparshJain769
 /docs/STATUS.md @SparshJain769
+/docs/PROOFPATH-SPEC.md @SparshJain769
+/security/suppressions.toml @SparshJain769
 /AGENTS.md @SparshJain769
 /README.md @SparshJain769
 /LEARNING.md @SparshJain769
