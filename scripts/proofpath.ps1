@@ -170,9 +170,9 @@ function Invoke-OpenApiGeneration {
     param([hashtable]$Paths)
     $generatedDirectory = Split-Path -Parent $Paths.Generated
     New-Item -ItemType Directory -Force -Path $generatedDirectory | Out-Null
-    & npm --prefix $Paths.Web exec -- openapi-typescript -- $Paths.Contract --output $Paths.Generated
+    & npm --prefix $Paths.Web exec -- openapi-typescript $Paths.Contract --output $Paths.Generated
     if ($LASTEXITCODE -ne 0) { throw "Pinned openapi-typescript generation failed." }
-    & npm --prefix $Paths.Web exec -- prettier -- --write $Paths.Generated
+    & npm --prefix $Paths.Web exec -- prettier --write $Paths.Generated
     if ($LASTEXITCODE -ne 0) { throw "Pinned Prettier formatting for generated declarations failed." }
 }
 
@@ -183,21 +183,29 @@ function Invoke-OpenApiGenerate {
     Write-Output "OpenAPI declarations generated at $($paths.Generated)."
 }
 
-function Invoke-OpenApiCheck {
-    $paths = Get-Stage3Paths
-    Invoke-OpenApiSubsetCheck -Paths $paths
-    # `sam validate` performs no AWS calls for a local structural check, but its boto3
-    # session still requires some region value. Use a scoped placeholder only when the
-    # host has none configured; WP-01 owns the real deployment region decision.
+function Invoke-WithScopedAwsRegion {
+    param([ScriptBlock]$ScriptBlock)
+    # SAM CLI's boto3 session requires some region value even for fully local
+    # operations (validate, local start-api) that make no real AWS calls. Use a
+    # scoped placeholder only when the host has none configured; WP-01 owns the
+    # real deployment region decision.
     $previousRegion = $env:AWS_DEFAULT_REGION
     if ([string]::IsNullOrEmpty($previousRegion)) { $env:AWS_DEFAULT_REGION = "us-east-1" }
     try {
-        & sam validate --template-file $paths.SamTemplate
-        if ($LASTEXITCODE -ne 0) { throw "SAM template validation failed." }
+        & $ScriptBlock
     }
     finally {
         if ([string]::IsNullOrEmpty($previousRegion)) { Remove-Item Env:\AWS_DEFAULT_REGION -ErrorAction SilentlyContinue }
         else { $env:AWS_DEFAULT_REGION = $previousRegion }
+    }
+}
+
+function Invoke-OpenApiCheck {
+    $paths = Get-Stage3Paths
+    Invoke-OpenApiSubsetCheck -Paths $paths
+    Invoke-WithScopedAwsRegion {
+        & sam validate --template-file $paths.SamTemplate
+        if ($LASTEXITCODE -ne 0) { throw "SAM template validation failed." }
     }
     Invoke-OpenApiGeneration -Paths $paths
     $requirements = "services/api/requirements.txt"
@@ -226,7 +234,7 @@ function Invoke-Stage4Format {
     if ($LASTEXITCODE -ne 0) { throw "Ruff formatting failed." }
     & uv run --frozen ruff check --fix services tests
     if ($LASTEXITCODE -ne 0) { throw "Ruff fixes failed." }
-    & npm --prefix $web exec -- prettier -- --write @prettierPaths
+    & npm --prefix $web exec -- prettier --write @prettierPaths
     if ($LASTEXITCODE -ne 0) { throw "Prettier formatting failed." }
 }
 
@@ -246,7 +254,7 @@ function Invoke-Stage4FormatCheck {
     )
     & uv run --frozen ruff format --check services tests
     if ($LASTEXITCODE -ne 0) { throw "Ruff format check failed." }
-    & npm --prefix $web exec -- prettier -- --check @prettierPaths
+    & npm --prefix $web exec -- prettier --check @prettierPaths
     if ($LASTEXITCODE -ne 0) { throw "Prettier format check failed." }
 }
 
@@ -327,7 +335,9 @@ function Invoke-Stage5Dev {
     try {
         Invoke-Stage5SamBuild
         $vite = Start-Process -FilePath "npm" -ArgumentList @("--prefix", "web", "run", "dev") -WorkingDirectory $script:RepositoryRoot -PassThru
-        $sam = Start-Process -FilePath "sam" -ArgumentList @("local", "start-api", "--template", ".aws-sam/build/template.yaml", "--host", "127.0.0.1", "--port", "3001") -WorkingDirectory $script:RepositoryRoot -PassThru
+        $sam = Invoke-WithScopedAwsRegion {
+            Start-Process -FilePath "sam" -ArgumentList @("local", "start-api", "--template", ".aws-sam/build/template.yaml", "--host", "127.0.0.1", "--port", "3001") -WorkingDirectory $script:RepositoryRoot -PassThru
+        }
         Wait-HttpReady -Url "http://127.0.0.1:5173" -TimeoutSeconds 30 -Name "Vite"
         Wait-HttpReady -Url "http://127.0.0.1:3001/health" -TimeoutSeconds 60 -Name "SAM Local health API"
         Write-Output "Development baseline: http://127.0.0.1:5173"
@@ -350,8 +360,10 @@ function Invoke-Stage5WebSmoke {
     try {
         Invoke-Stage5SamBuild
         $env:NODE_PATH = Join-Path $script:RepositoryRoot "web/node_modules"
-        & npm --prefix web exec -- playwright test
-        if ($LASTEXITCODE -ne 0) { throw "Playwright Chromium smoke failed." }
+        Invoke-WithScopedAwsRegion {
+            & npm --prefix web exec -- playwright test
+            if ($LASTEXITCODE -ne 0) { throw "Playwright Chromium smoke failed." }
+        }
     }
     finally {
         $env:NODE_PATH = $previousNodePath
