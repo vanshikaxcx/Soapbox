@@ -1,0 +1,202 @@
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  PROOFPATH_NODE_VERSION: "24.21.0"
+  PROOFPATH_UV_VERSION: "0.12.13"
+  PROOFPATH_PYTHON_VERSION: "3.12.14"
+  # aws-actions/setup-sam v3 resolved to release commit 89ddb14d60e682855e3fea4be85b3c56485de310
+  # (https://github.com/aws-actions/setup-sam/releases/tag/v3); no finer concrete semver tag
+  # exists in that repository's tag list at the time of pinning.
+  PROOFPATH_SAM_VERSION: "1.164.0"
+
+jobs:
+  locks-and-generated:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.PROOFPATH_NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: ${{ env.PROOFPATH_UV_VERSION }}
+          python-version: ${{ env.PROOFPATH_PYTHON_VERSION }}
+          enable-cache: true
+      - name: Set up SAM CLI
+        uses: aws-actions/setup-sam@89ddb14d60e682855e3fea4be85b3c56485de310 # v3 (resolved 2026-09-17, see env comment above)
+        with:
+          version: ${{ env.PROOFPATH_SAM_VERSION }}
+          use-installer: true
+      - name: Install web dependencies
+        run: npm --prefix web ci
+      - name: Sync Python dependencies (frozen)
+        run: uv sync --frozen
+      - name: Validate OpenAPI, regenerate declarations and SAM export, and check for drift
+        run: pwsh ./scripts/proofpath.ps1 openapi-check
+
+  format-lint-type:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.PROOFPATH_NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: ${{ env.PROOFPATH_UV_VERSION }}
+          python-version: ${{ env.PROOFPATH_PYTHON_VERSION }}
+          enable-cache: true
+      - name: Install web dependencies
+        run: npm --prefix web ci
+      - name: Sync Python dependencies (frozen)
+        run: uv sync --frozen
+      - name: Format check
+        run: pwsh ./scripts/proofpath.ps1 format-check
+      - name: Lint
+        run: pwsh ./scripts/proofpath.ps1 lint
+      - name: Typecheck
+        run: pwsh ./scripts/proofpath.ps1 typecheck
+
+  unit-contract-integration:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.PROOFPATH_NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: ${{ env.PROOFPATH_UV_VERSION }}
+          python-version: ${{ env.PROOFPATH_PYTHON_VERSION }}
+          enable-cache: true
+      - name: Install web dependencies
+        run: npm --prefix web ci
+      - name: Sync Python dependencies (frozen)
+        run: uv sync --frozen
+      - name: Run deterministic test suites
+        run: pwsh ./scripts/proofpath.ps1 test
+
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.PROOFPATH_NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: ${{ env.PROOFPATH_UV_VERSION }}
+          python-version: ${{ env.PROOFPATH_PYTHON_VERSION }}
+          enable-cache: true
+      - name: Set up SAM CLI
+        uses: aws-actions/setup-sam@89ddb14d60e682855e3fea4be85b3c56485de310 # v3 (resolved 2026-09-17, see env comment above)
+        with:
+          version: ${{ env.PROOFPATH_SAM_VERSION }}
+          use-installer: true
+      - name: Install web dependencies
+        run: npm --prefix web ci
+      - name: Sync Python dependencies (frozen)
+        run: uv sync --frozen
+      - name: Build web and containerized SAM artifacts
+        run: pwsh ./scripts/proofpath.ps1 build
+
+  security:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout (full history for Gitleaks)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.PROOFPATH_NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: ${{ env.PROOFPATH_UV_VERSION }}
+          python-version: ${{ env.PROOFPATH_PYTHON_VERSION }}
+          enable-cache: true
+      - name: Install web dependencies
+        run: npm --prefix web ci
+      - name: Sync Python dependencies (frozen)
+        run: uv sync --frozen
+      - name: Run security checks
+        run: pwsh ./scripts/proofpath.ps1 security
+
+  web-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.PROOFPATH_NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: ${{ env.PROOFPATH_UV_VERSION }}
+          python-version: ${{ env.PROOFPATH_PYTHON_VERSION }}
+          enable-cache: true
+      - name: Set up SAM CLI
+        uses: aws-actions/setup-sam@89ddb14d60e682855e3fea4be85b3c56485de310 # v3 (resolved 2026-09-17, see env comment above)
+        with:
+          version: ${{ env.PROOFPATH_SAM_VERSION }}
+          use-installer: true
+      - name: Install web dependencies
+        run: npm --prefix web ci
+      - name: Sync Python dependencies (frozen)
+        run: uv sync --frozen
+      - name: Install pinned Chromium
+        run: npm --prefix web exec -- playwright install --with-deps chromium
+      - name: Run scaffold and health smoke
+        run: pwsh ./scripts/proofpath.ps1 web-smoke

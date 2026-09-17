@@ -1,0 +1,13 @@
+# Keep Stage 2 repository-controlled text portable without rewriting historical sources.
+/.editorconfig text eol=lf
+/.env.example text eol=lf
+/.gitattributes text eol=lf
+/.gitignore text eol=lf
+/.node-version text eol=lf
+/.python-version text eol=lf
+/package.json text eol=lf
+/pyproject.toml text eol=lf
+/uv.lock text eol=lf
+/uv.toml text eol=lf
+/scripts/** text eol=lf
+/web/** text eol=lf

@@ -1,0 +1,149 @@
+openapi: 3.0.3
+info:
+  title: ProofPath API
+  version: 0.0.0
+  description: Baseline transport contract. This document intentionally contains only the public liveness route.
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Return the public liveness result.
+      responses:
+        "200":
+          description: The service is live.
+          headers:
+            X-Request-ID:
+              description: Opaque server-generated request identifier.
+              required: true
+              schema:
+                $ref: "#/components/schemas/OpaqueId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthSuccessResponse"
+        "500":
+          description: An unexpected error was safely mapped by the application.
+          headers:
+            X-Request-ID:
+              description: Opaque server-generated request identifier.
+              required: true
+              schema:
+                $ref: "#/components/schemas/OpaqueId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  parameters:
+    Idempotency-Key:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Reusable non-empty idempotency key for future mutations.
+      schema:
+        type: string
+        minLength: 1
+  schemas:
+    OpaqueId:
+      type: string
+      minLength: 1
+      description: Opaque identifier. Clients must not parse it or infer its meaning.
+    UtcTimestamp:
+      type: string
+      format: date-time
+      description: RFC 3339 timestamp normalized to UTC by servers.
+    CurrencyCode:
+      type: string
+      enum:
+        - INR
+    MoneyINR:
+      type: object
+      additionalProperties: false
+      required:
+        - amount_paise
+        - currency
+      properties:
+        amount_paise:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        currency:
+          $ref: "#/components/schemas/CurrencyCode"
+    Version:
+      type: integer
+      minimum: 0
+      maximum: 9007199254740991
+    Revision:
+      type: integer
+      minimum: 0
+      maximum: 9007199254740991
+    JobStatus:
+      type: string
+      enum:
+        - queued
+        - running
+        - succeeded
+        - failed
+    AsyncAccepted:
+      type: object
+      additionalProperties: false
+      required:
+        - job_id
+        - resource_id
+        - status_url
+      properties:
+        job_id:
+          $ref: "#/components/schemas/OpaqueId"
+        resource_id:
+          $ref: "#/components/schemas/OpaqueId"
+        status_url:
+          type: string
+          format: uri
+    HealthData:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+    HealthSuccessResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+        - request_id
+      properties:
+        data:
+          $ref: "#/components/schemas/HealthData"
+        request_id:
+          $ref: "#/components/schemas/OpaqueId"
+    ErrorBody:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+        - details
+      properties:
+        code:
+          type: string
+          pattern: "^[a-z][a-z0-9_]*$"
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - error
+        - request_id
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+        request_id:
+          $ref: "#/components/schemas/OpaqueId"

@@ -1,0 +1,30 @@
+{
+  "name": "proofpath-toolchain",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ProofPath repository metadata and cross-platform command aliases.",
+  "packageManager": "npm@12.0.2",
+  "engines": {
+    "node": "24.21.0",
+    "npm": "12.0.2"
+  },
+  "scripts": {
+    "help": "pwsh -NoProfile -File ./scripts/proofpath.ps1 help",
+    "setup": "pwsh -NoProfile -File ./scripts/proofpath.ps1 setup",
+    "versions": "pwsh -NoProfile -File ./scripts/proofpath.ps1 versions",
+    "format": "pwsh -NoProfile -File ./scripts/proofpath.ps1 format",
+    "format-check": "pwsh -NoProfile -File ./scripts/proofpath.ps1 format-check",
+    "lint": "pwsh -NoProfile -File ./scripts/proofpath.ps1 lint",
+    "typecheck": "pwsh -NoProfile -File ./scripts/proofpath.ps1 typecheck",
+    "test-unit": "pwsh -NoProfile -File ./scripts/proofpath.ps1 test-unit",
+    "test-contract": "pwsh -NoProfile -File ./scripts/proofpath.ps1 test-contract",
+    "test-integration": "pwsh -NoProfile -File ./scripts/proofpath.ps1 test-integration",
+    "test": "pwsh -NoProfile -File ./scripts/proofpath.ps1 test",
+    "build": "pwsh -NoProfile -File ./scripts/proofpath.ps1 build",
+    "dev": "pwsh -NoProfile -File ./scripts/proofpath.ps1 dev",
+    "web-smoke": "pwsh -NoProfile -File ./scripts/proofpath.ps1 web-smoke",
+    "security": "pwsh -NoProfile -File ./scripts/proofpath.ps1 security",
+    "verify-gate-a": "pwsh -NoProfile -File ./scripts/proofpath.ps1 verify-gate-a",
+    "verify-clean-clone": "pwsh -NoProfile -File ./scripts/proofpath.ps1 verify-clean-clone"
+  }
+}

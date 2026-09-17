@@ -1,0 +1,23 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: ProofPath WP-00 public health baseline.
+Resources:
+  ProofPathApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: v1
+      DefinitionUri: ../contracts/openapi.yaml
+  HealthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../services/api
+      Handler: health.lambda_handler
+      Runtime: python3.12
+      Timeout: 10
+      Events:
+        Health:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ProofPathApi
+            Path: /health
+            Method: get
