@@ -195,24 +195,30 @@ class P3MerchantPortAdapter:
         if assessment is None:
             return InvalidRecord(record="assess_fees", detail="merchant returned no assessment")
 
-        confidence = Confidence.ESTIMATED if assessment.completeness == "estimated" else (
-            Confidence.UNKNOWN if assessment.completeness == "unknown" else Confidence.VERIFIED
-        )
+        # "complete" is the only merchant-side string that means fully known
+        # (see services.merchants.models.FeeAssessment's docstring: "complete"
+        # | "estimated" | "unknown"). Anything else -- a typo, a future value
+        # neither side has agreed on yet -- must fall through to UNKNOWN, not
+        # VERIFIED: a fee we can't positively confirm is unpriced, never
+        # silently treated as fully known.
+        if assessment.completeness == "estimated":
+            confidence = Confidence.ESTIMATED
+        elif assessment.completeness == "complete":
+            confidence = Confidence.VERIFIED
+        else:
+            confidence = Confidence.UNKNOWN
 
-        def charge(kind: ChargeKind, amount_paise: int | None) -> Charge | None:
-            if amount_paise is None:
-                return None
-            if confidence is Confidence.UNKNOWN:
+        def charge(kind: ChargeKind, amount_paise: int | None) -> Charge:
+            # A fee the merchant didn't report is unknown, never zero --
+            # dropping it here would let `compute_totals` silently treat an
+            # unpriced fee as if it didn't exist.
+            if amount_paise is None or confidence is Confidence.UNKNOWN:
                 return Charge.unknown_charge(kind)
             return Charge.known_charge(kind, Money.paise(amount_paise), confidence)
 
-        charges = [
-            c
-            for c in (
-                charge(ChargeKind.DELIVERY, assessment.delivery_fee_paise),
-                charge(ChargeKind.OTHER, assessment.platform_fee_paise),
-                charge(ChargeKind.HANDLING, assessment.other_fees_paise),
-            )
-            if c is not None
-        ]
-        return tuple(charges)
+        charges = (
+            charge(ChargeKind.DELIVERY, assessment.delivery_fee_paise),
+            charge(ChargeKind.OTHER, assessment.platform_fee_paise),
+            charge(ChargeKind.HANDLING, assessment.other_fees_paise),
+        )
+        return charges
