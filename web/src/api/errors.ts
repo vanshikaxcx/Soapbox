@@ -1,7 +1,10 @@
-import type { components } from "./generated/schema";
-
-/** Server-declared error code from the shared envelope (WP-00 contract). */
-export type ServerErrorCode = components["schemas"]["ErrorCode"];
+/**
+ * Server-declared error code from the shared envelope (WP-00 contract). The
+ * contract only constrains this to `^[a-z][a-z0-9_]*$`, not a closed enum -
+ * each work package mints its own codes as it lands, so an unrecognized one
+ * falls back to `kindForFailure`'s status-based mapping rather than a type error.
+ */
+export type ServerErrorCode = string;
 
 /**
  * What the UI branches on. Server codes are authoritative when present; HTTP
@@ -22,7 +25,7 @@ export type ApiErrorKind =
   | "canceled" //       aborted by the caller (navigation, superseded request)
   | "malformed"; //     response did not match the envelope contract
 
-const CODE_TO_KIND: Record<ServerErrorCode, ApiErrorKind> = {
+const CODE_TO_KIND: Partial<Record<ServerErrorCode, ApiErrorKind>> = {
   validation_error: "validation",
   conflict: "conflict",
   stale_version: "stale_version",
@@ -103,7 +106,10 @@ export function isApiError(value: unknown): value is ApiError {
  */
 export function kindForFailure(status: number, code: ServerErrorCode | undefined): ApiErrorKind {
   if (code !== undefined) {
-    return CODE_TO_KIND[code];
+    const byCode = CODE_TO_KIND[code];
+    if (byCode !== undefined) {
+      return byCode;
+    }
   }
   const byStatus = STATUS_TO_KIND[status];
   if (byStatus !== undefined) {

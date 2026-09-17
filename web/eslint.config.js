@@ -9,12 +9,11 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {
-    files: ["**/*.{ts,tsx}"],
     languageOptions: {
       globals: globals.browser,
       parserOptions: {
-        // Relative to web/, which is where `make lint`/CI runs eslint from.
-        projectService: { allowDefaultProject: ["eslint.config.js", "vite.config.ts"] },
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
       },
     },
     plugins: {
@@ -33,5 +32,17 @@ export default tseslint.config(
   {
     files: ["**/*.test.ts", "**/*.test.tsx"],
     rules: { "@typescript-eslint/unbound-method": "off" },
+  },
+  // eslint.config.js is a .js file and tsconfig has `allowJs: false`, so it can
+  // never be part of the typed project - turn type-aware parsing/rules back
+  // off for it rather than fighting a default-project fallback (typescript-eslint's
+  // own documented pattern for linting its own config file). Must come last so
+  // it overrides the projectService set above.
+  {
+    files: ["eslint.config.js"],
+    extends: [tseslint.configs.disableTypeChecked],
+    languageOptions: {
+      parserOptions: { projectService: false, project: false },
+    },
   },
 );
