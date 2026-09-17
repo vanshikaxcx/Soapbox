@@ -28,7 +28,7 @@ The first five attempts on this same Windows machine failed, each surfacing a ge
 ## macOS — AC-00-09 — PASS
 
 - **Date:** 2026-09-17
-- **Commit tested:** `c8a5efff2d9b49c883e583da1d5db6bad44e2b92` (`feat/wp-00-repo-baseline-p4`) — confirm this matches `git rev-parse HEAD` in the tested clone before treating this as final evidence.
+- **Commit tested:** `41960a044fcc1659c1fbcbe2fb75af68ea157121` (`feat/wp-00-repo-baseline-p4`) — confirmed directly via `git rev-parse HEAD`/`git log -1` in the tested clone. (An earlier draft of this record incorrectly cited `c8a5efff...`; that and the subsequent `7a0532c` commit are docs-only relative to `41960a0` — see `git diff 41960a0 7a0532c --stat` — so this correction does not affect the validity of the pass.)
 - **OS:** macOS 15.7.3 (BuildVersion 24G419), arm64 (Apple Silicon)
 - **Docker Engine:** 28.5.1
 - **Docker Compose:** v2.40.2-desktop.1
