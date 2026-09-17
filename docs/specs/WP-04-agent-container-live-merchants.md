@@ -108,6 +108,7 @@ Confirmed live (query "rare spice" surfaced a real example — "Rareamrit Kashmi
 ## Idempotency, concurrency, timeout, and retry behavior
 
 - `search()`/`refresh()` take an explicit `deadline`; `_with_page` returns a typed `TIMEOUT` `MerchantError` immediately if the deadline has already passed, and clamps Playwright's own per-page timeout to whatever time remains.
+- **Fixed (WP-06 work, 2026-09-17):** Blinkit's `search()`/`refresh()` called `warm_location()` *before* `_with_page`'s deadline check, so an already-elapsed deadline still paid the full ~9s cold location-selection cost before returning (correctly, but ~9s late) a `TIMEOUT` error — confirmed live twice by a new contract test that unintentionally exercised the real path against production blinkit.com before the bug was understood (see `tests/contracts/test_merchant_connector_contract.py`'s docstring and the WP-06 spec's addendum). Both methods now check the deadline first via `_elapsed_deadline_error()`, before `warm_location()` is ever called; re-verified via a monkeypatched `warm_location` spy (asserted not called) rather than a second live hit.
 - Concurrency is now genuinely safe across engines (see above) and serialized-but-correct within one engine (two Blinkit calls queue on Blinkit's one dedicated thread rather than crashing or racing).
 - No retry logic in the connectors themselves; a failed fetch returns a typed `MerchantError` for the caller (search workflow, WP-06/WP-07) to decide on.
 
@@ -134,7 +135,7 @@ A single malformed card is skipped (`continue`), not treated as a whole-search f
 None yet committed on this branch — blocked on WP-00's pytest config landing here. All verification in this document was done via one-off scripts against the real, live sites and the real connector classes (not mocked), documented as "confirmed live" throughout.
 
 ### Contract
-Not yet written: a connector contract suite that runs identically against Blinkit, Zepto, and the fixture connector (same assertions, parametrized by merchant) is still owed per the WP-04 POA entry.
+Written (2026-09-17, WP-06 work): `tests/contracts/test_merchant_connector_contract.py`, 29 tests, same assertions parametrized across Blinkit, Zepto, and Fixture — port compliance, `assess_fees()` purity/honesty (never negative, live connectors never claim `"complete"`), domain-allowlist enforcement, elapsed-deadline handling, and registry live/fixture isolation. All run in well under a second: nothing in it needs a real browser or network call (see the file's own docstring for exactly why each assertion is safe). Writing the deadline assertion is what surfaced the `warm_location` bug fixed above.
 
 ### Integration
 Not yet written: redirect/prompt-injection rejection tests, CAPTCHA/denial typed-error tests.
@@ -153,7 +154,7 @@ Every behavior claimed as "confirmed live" in this document was run against the 
 - [x] `refresh()` implemented and correct on both connectors (Blinkit: fixed a real bug where the wrong product's data could be returned — the PDP's cart-item payload repeats for every "similar products" item in no guaranteed order, so matching must check the SKU, not take the first match).
 - [x] `assess_fees()` returns a labeled `"estimated"` fee on both connectors, never `None`/silent.
 - [x] Out-of-stock correctly detected on Blinkit (see above).
-- [ ] Automated connector contract suite exists and passes.
+- [x] Automated connector contract suite exists and passes (`tests/contracts/test_merchant_connector_contract.py`, 29 tests, parametrized across Blinkit/Zepto/Fixture — see WP-06 spec for detail; found and fixed the `warm_location`/deadline bug above in the process).
 - [ ] S3 evidence sink implemented.
 - [ ] Cloud/Fargate trace proves both live sources work from the actual deployed environment (blocked on WP-01).
 - [ ] Zepto's location is set to the requested pincode rather than its own IP-based default (open — see "Open questions").
