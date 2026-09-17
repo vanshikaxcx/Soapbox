@@ -15,7 +15,18 @@ WP-00 Stage 5 establishes the baseline health Lambda, Vite production build, and
 
 ### Stage 2 prerequisites and commands
 
-Install these exact prerequisites before setup: [Node.js `24.21.0`](https://nodejs.org/dist/v24.21.0/), npm `12.0.2` (`npm install --global npm@12.0.2` after installing Node), [CPython `3.12.14`](https://www.python.org/downloads/release/python-31214/), [uv `0.12.13`](https://docs.astral.sh/uv/getting-started/installation/), [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell), and [SAM CLI `1.164.0`](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html).
+Install these exact prerequisites before setup: [Node.js `24.21.0`](https://nodejs.org/dist/v24.21.0/), npm `12.0.2` (`npm install --global npm@12.0.2` after installing Node), [uv `0.12.13`](https://docs.astral.sh/uv/getting-started/installation/), [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell), and [SAM CLI `1.164.0`](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html).
+
+CPython `3.12.14` has **no official binary installer on any platform** — Python 3.12 entered upstream "security fixes only" mode and python.org only ships source tarballs for this version. After installing uv, use uv's own independent Python toolchain instead:
+
+```text
+uv python install 3.12.14 --default
+python --version
+```
+
+This must print `Python 3.12.14`; if a different Python (from Homebrew, conda, pyenv, or similar) still wins on `PATH`, ensure uv's shim directory takes priority.
+
+If your platform's package manager for SAM CLI is broken or unavailable, `uv tool install aws-sam-cli==1.164.0` is a working platform-independent alternative. If your platform's package manager has no `pwsh` package, the portable release tarball from the PowerShell link above needs no elevated privileges to install.
 
 Docker Desktop is not required for Stage 2 setup. Later `build`, `dev`, and Gate A work require Docker Desktop, Docker Engine, and `docker compose`; use the [Docker Desktop requirements](https://docs.docker.com/desktop/setup/install/windows-install/) for the supported Windows version, virtualization, and WSL2-backend requirements. Enable Windows long paths through the documented [Win32 long-path policy](https://learn.microsoft.com/windows/win32/fileio/maximum-file-path-limitation) before installing deep npm dependency trees. On macOS, use Docker's supported [Mac installation requirements](https://docs.docker.com/desktop/setup/install/mac-install/) and select the Intel or Apple Silicon installer matching the host architecture. Docker Desktop licensing remains subject to the applicable license terms; this project does not claim it is universally free.
 
