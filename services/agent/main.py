@@ -5,15 +5,30 @@ directly by the browser.
 """
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime
 
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
-from services.agent.config import AGENT_SERVICE_TOKEN
+from services.agent.config import AGENT_SERVICE_TOKEN, TESTED_LOCALITY_PINCODE
 from services.agent.tools.search_merchants import search_merchants
+from services.merchants.blinkit import warm_location
 
 app = FastAPI(title="proofpath-agent")
+
+
+@app.on_event("startup")
+def _warm_blinkit_location() -> None:
+    """Pay Blinkit's ~8s location-selection cost at container boot, not on a
+    live request. Runs in the background so /health responds immediately;
+    a real request landing before this finishes blocks on the same
+    per-pincode lock inside warm_location() rather than racing it — see
+    blinkit.py's module docstring.
+    """
+    threading.Thread(
+        target=warm_location, args=(TESTED_LOCALITY_PINCODE,), daemon=True
+    ).start()
 
 
 @app.get("/health")

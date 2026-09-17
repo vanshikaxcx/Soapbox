@@ -5,6 +5,7 @@ schema-constrained results. It never authorizes payment or approval actions.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 from services.agent.config import ITEM_FETCH_DEADLINE_SECONDS
@@ -31,13 +32,21 @@ def search_merchants(
 
     deadline = datetime.now(UTC) + timedelta(seconds=ITEM_FETCH_DEADLINE_SECONDS)
 
+    # Each merchant.search() call routes internally to its own connector's
+    # browser-engine thread (see browser_pool.py) — Blinkit's chromium and
+    # Zepto's lightpanda are independent, so running these calls concurrently
+    # here actually overlaps them rather than just launching them at once.
+    # Confirmed live: two-merchant wall time drops close to the slower
+    # merchant alone rather than their sum.
     results: list[Observation] = []
-    for merchant in registry.values():
-        outcome = merchant.search(loc, query, deadline)
-        if isinstance(outcome, list):
-            results.extend(outcome)
-        # Typed MerchantError is dropped here; the caller (search workflow,
-        # owned by P2/P3 jointly) is responsible for surfacing partial-result
-        # coverage rather than failing the whole search.
+    with ThreadPoolExecutor(max_workers=max(len(registry), 1)) as executor:
+        futures = [executor.submit(merchant.search, loc, query, deadline) for merchant in registry.values()]
+        for future in futures:
+            outcome = future.result()
+            if isinstance(outcome, list):
+                results.extend(outcome)
+            # Typed MerchantError is dropped here; the caller (search
+            # workflow, owned by P2/P3 jointly) is responsible for surfacing
+            # partial-result coverage rather than failing the whole search.
 
     return [obs.model_dump(mode="json") for obs in results]
