@@ -15,15 +15,18 @@ per-task.
 from __future__ import annotations
 
 from abc import abstractmethod
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Callable
+from typing import Any, TypeVar
 
-from playwright.sync_api import BrowserContext, Page
+from playwright.sync_api import Browser, BrowserContext, Page, Response
 
 from . import browser_pool
 from .base import Merchant
 from .evidence import EvidenceSink
 from .models import ItemQuery, Location, MerchantError, MerchantErrorCode, Observation
+
+T = TypeVar("T")
 
 # Domain allowlist enforced before any navigation. Never navigate elsewhere,
 # including redirect targets.
@@ -50,7 +53,7 @@ class PlaywrightMerchant(Merchant):
         if host not in self._allowed_domains():
             raise ValueError(f"blocked navigation outside allowlist: {host}")
 
-    def _goto(self, page, url: str, **kwargs):
+    def _goto(self, page: Page, url: str, **kwargs: Any) -> Response | None:
         """Navigate, enforcing the domain allowlist before AND after.
 
         `page.goto()` follows redirects transparently — checking only the
@@ -64,9 +67,9 @@ class PlaywrightMerchant(Merchant):
         self._assert_allowed(page.url)
         return response
 
-    def _context_options(self, location: Location | None) -> dict:
+    def _context_options(self, location: Location | None) -> dict[str, Any]:
         """Base new_context() kwargs. Connectors override to add e.g. cached storage_state."""
-        options: dict = {
+        options: dict[str, Any] = {
             "viewport": {"width": 390, "height": 844},
             "timezone_id": "Asia/Kolkata",
         }
@@ -89,10 +92,10 @@ class PlaywrightMerchant(Merchant):
             )
         return options
 
-    def _new_context(self, browser, location: Location | None) -> BrowserContext:
+    def _new_context(self, browser: Browser, location: Location | None) -> BrowserContext:
         return browser.new_context(**self._context_options(location))
 
-    def _capture_evidence(self, context: BrowserContext, page) -> str:
+    def _capture_evidence(self, context: BrowserContext, page: Page) -> str:
         try:
             screenshot = page.screenshot(type="png")
             return self.evidence_sink.save(self.name, screenshot, "image/png")
@@ -101,8 +104,8 @@ class PlaywrightMerchant(Merchant):
             return self.evidence_sink.save(self.name, html, "text/html")
 
     def _with_page(
-        self, deadline: datetime, task: Callable[[Page], object], location: Location | None = None
-    ) -> object | MerchantError:
+        self, deadline: datetime, task: Callable[[Page], T], location: Location | None = None
+    ) -> T | MerchantError:
         """Run `task` against a fresh, isolated page and convert failures to a typed error.
 
         Shared by search() below and by connectors' own refresh()/assess_fees()
@@ -127,7 +130,7 @@ class PlaywrightMerchant(Merchant):
                 occurred_at=datetime.now(UTC),
             )
 
-        def run() -> object | MerchantError:
+        def run() -> T | MerchantError:
             browser = browser_pool.get_browser(self.browser_engine)
             context = self._new_context(browser, location)
             try:
@@ -163,6 +166,6 @@ class PlaywrightMerchant(Merchant):
 
     @abstractmethod
     def _search_impl(
-        self, page, location: Location, item: ItemQuery
+        self, page: Page, location: Location, item: ItemQuery
     ) -> list[Observation] | MerchantError:
         """Merchant-specific navigation/scraping. Implemented by each connector."""

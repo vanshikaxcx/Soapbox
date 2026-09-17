@@ -5,27 +5,31 @@ shape than the `Merchant` port WP-04 actually built (compared directly
 against P3's `services/application/ports.py` on `origin/p3`):
 
     P3 expects:
-        def refresh(self, location: str, sku: str, deadline_seconds: int) -> Observation | DomainError
-        def assess_fees(self, location: str, merchant_id: str, line_hash: str, deadline_seconds: int) -> tuple[Charge, ...] | DomainError
+        def refresh(self, location: str, sku: str, deadline_seconds: int)
+            -> Observation | DomainError
+        def assess_fees(self, location: str, merchant_id: str, line_hash: str,
+                         deadline_seconds: int) -> tuple[Charge, ...] | DomainError
 
     WP-04 built:
-        def refresh(self, location: Location, sku: str, deadline: datetime) -> Observation | MerchantError
-        def assess_fees(self, location: Location, exact_lines: list[Line], deadline: datetime) -> FeeAssessment | None
+        def refresh(self, location: Location, sku: str, deadline: datetime)
+            -> Observation | MerchantError
+        def assess_fees(self, location: Location, exact_lines: list[Line], deadline: datetime)
+            -> FeeAssessment | None
 
     Different `location` type, different deadline representation, different
     Observation/error/fee types entirely (P3's live in `services.domain`,
     ours in `services.merchants.models`) — plus their own `Observation`,
     `DomainError` and `Charge` classes, not ours.
 
-IMPORTANT — this file cannot be import-checked in this repo yet.
-`services.domain` and `services.application` (P3's modules, imported below)
-do not exist in this checkout: P3's code lives on `origin/p3` in a
-completely different repo layout (root-level `services/`, not nested under
-`proofpath/`) that hasn't been reconciled into this tree. This adapter is
-written against the real class definitions fetched directly from that
-branch, not guessed, but it is untested by import or by running until that
-reconciliation happens. Treat it as a correct-on-paper draft, not a
-verified integration.
+Verified for real as of the merge into feat/wp-06-search-comparison-p2
+(P3's feat/wp-02-08-09-transaction-safety-p3, itself rebuilt on P4's WP-00
+baseline, merged cleanly — no conflicts, both sides touch disjoint files):
+`isinstance(P3MerchantPortAdapter(...), MerchantPort)` is `True`, and
+`refresh()` against real live Blinkit data returns a correctly-typed
+`services.domain.catalog.Observation` with correct unit conversion
+(5kg -> 5000g base units), Money, and Mode. This was previously only
+checked against hand-written stubs before the repo layouts merged; it's
+now checked against the real thing.
 
 Three real assumptions below are NOT settled facts — they need P3 to
 confirm, not just this file's opinion:
@@ -57,8 +61,8 @@ confirm, not just this file's opinion:
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from typing import Callable
 
 # --- P3's types (services.domain / services.application on origin/p3) -----
 # Not resolvable in this repo yet; see module docstring. Left as real,
@@ -194,23 +198,21 @@ class P3MerchantPortAdapter:
         confidence = Confidence.ESTIMATED if assessment.completeness == "estimated" else (
             Confidence.UNKNOWN if assessment.completeness == "unknown" else Confidence.VERIFIED
         )
-        charges: list[Charge] = []
-        if assessment.delivery_fee_paise is not None:
-            charges.append(
-                Charge.known_charge(ChargeKind.DELIVERY, Money.paise(assessment.delivery_fee_paise), confidence)
-                if confidence is not Confidence.UNKNOWN
-                else Charge.unknown_charge(ChargeKind.DELIVERY)
+
+        def charge(kind: ChargeKind, amount_paise: int | None) -> Charge | None:
+            if amount_paise is None:
+                return None
+            if confidence is Confidence.UNKNOWN:
+                return Charge.unknown_charge(kind)
+            return Charge.known_charge(kind, Money.paise(amount_paise), confidence)
+
+        charges = [
+            c
+            for c in (
+                charge(ChargeKind.DELIVERY, assessment.delivery_fee_paise),
+                charge(ChargeKind.OTHER, assessment.platform_fee_paise),
+                charge(ChargeKind.HANDLING, assessment.other_fees_paise),
             )
-        if assessment.platform_fee_paise is not None:
-            charges.append(
-                Charge.known_charge(ChargeKind.OTHER, Money.paise(assessment.platform_fee_paise), confidence)
-                if confidence is not Confidence.UNKNOWN
-                else Charge.unknown_charge(ChargeKind.OTHER)
-            )
-        if assessment.other_fees_paise is not None:
-            charges.append(
-                Charge.known_charge(ChargeKind.HANDLING, Money.paise(assessment.other_fees_paise), confidence)
-                if confidence is not Confidence.UNKNOWN
-                else Charge.unknown_charge(ChargeKind.HANDLING)
-            )
+            if c is not None
+        ]
         return tuple(charges)

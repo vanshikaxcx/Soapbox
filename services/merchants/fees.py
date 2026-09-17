@@ -36,13 +36,15 @@ _ZEPTO_PLATFORM_FEE_PAISE = 2_00
 
 def blinkit_estimated_fees(subtotal_paise: int) -> tuple[int | None, int | None, int | None]:
     """Returns (delivery_fee_paise, platform_fee_paise, other_fees_paise)."""
-    delivery_fee = 0 if subtotal_paise >= _BLINKIT_FREE_DELIVERY_ABOVE_PAISE else _BLINKIT_DELIVERY_FEE_PAISE
+    free = subtotal_paise >= _BLINKIT_FREE_DELIVERY_ABOVE_PAISE
+    delivery_fee = 0 if free else _BLINKIT_DELIVERY_FEE_PAISE
     return delivery_fee, None, _BLINKIT_HANDLING_FEE_PAISE
 
 
 def zepto_estimated_fees(subtotal_paise: int) -> tuple[int | None, int | None, int | None]:
     """Returns (delivery_fee_paise, platform_fee_paise, other_fees_paise)."""
-    delivery_fee = 0 if subtotal_paise >= _ZEPTO_FREE_DELIVERY_ABOVE_PAISE else _ZEPTO_DELIVERY_FEE_PAISE
+    free = subtotal_paise >= _ZEPTO_FREE_DELIVERY_ABOVE_PAISE
+    delivery_fee = 0 if free else _ZEPTO_DELIVERY_FEE_PAISE
     return delivery_fee, _ZEPTO_PLATFORM_FEE_PAISE, None
 
 
