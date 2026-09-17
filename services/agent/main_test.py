@@ -1,4 +1,5 @@
-"""FastAPI entrypoint: auth gating and the `/tasks/compare` wiring (WP-04/WP-06).
+"""FastAPI entrypoint: auth gating and the `/tasks/compare`/`/tasks/extract`
+wiring (WP-04/WP-06/WP-05).
 
 Uses `Mode.FIXTURE` throughout -- the disclosed, deterministic demo fallback
 -- so these tests never touch a real browser or network call. `/tasks/search`
@@ -113,3 +114,43 @@ def test_tasks_compare_accepts_the_configured_bearer_token(
         headers={"Authorization": "Bearer secret-token"},
     )
     assert resp.status_code == 200
+
+
+def test_tasks_extract_resolves_items_from_a_transcript(client: TestClient) -> None:
+    resp = client.post(
+        "/tasks/extract",
+        json={"transcript": "2 kg rice, 500 ml milk", "mode": "fixture"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [item["name"] for item in body["items"]] == ["rice", "milk"]
+    assert body["unresolved"] == []
+
+
+def test_tasks_extract_rejects_neither_transcript_nor_image(client: TestClient) -> None:
+    resp = client.post("/tasks/extract", json={"mode": "fixture"})
+    assert resp.status_code == 400
+
+
+def test_tasks_extract_rejects_both_transcript_and_image(client: TestClient) -> None:
+    resp = client.post(
+        "/tasks/extract",
+        json={
+            "transcript": "2 kg rice",
+            "image_base64": "aGVsbG8=",
+            "image_mime_type": "image/jpeg",
+            "mode": "fixture",
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_tasks_extract_requires_the_bearer_token_when_one_is_configured(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(main_module, "AGENT_SERVICE_TOKEN", "secret-token")
+    resp = client.post(
+        "/tasks/extract",
+        json={"transcript": "2 kg rice", "mode": "fixture"},
+    )
+    assert resp.status_code == 401
