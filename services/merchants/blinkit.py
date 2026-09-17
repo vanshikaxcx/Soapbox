@@ -135,7 +135,7 @@ class BlinkitMerchant(PlaywrightMerchant):
     def _run_location_flow(self, page, location: Location) -> None:
         """The actual UI flow. Only ever invoked via warm_location()'s lock,
         so it never runs twice concurrently for the same pincode."""
-        page.goto("https://blinkit.com/", wait_until="load")
+        self._goto(page, "https://blinkit.com/", wait_until="load")
         try:
             page.click('[data-qa-id="close-button"]', timeout=3_000)
         except Exception:  # noqa: BLE001 - app-install banner isn't always shown
@@ -171,11 +171,10 @@ class BlinkitMerchant(PlaywrightMerchant):
             # is invoked some other way.
             self._run_location_flow(page, location)
         search_url = f"https://blinkit.com/s/?q={quote(item.name)}"
-        self._assert_allowed(search_url)
         # Direct navigation, no UI search interaction: confirmed live that
         # this resolves correctly once the context has a location cookie,
         # whether from _run_location_flow() just above or from cache.
-        page.goto(search_url, wait_until="load")
+        self._goto(page, search_url, wait_until="load")
 
         try:
             page.wait_for_selector('div[role="button"][id] .tw-text-300', timeout=10_000)
@@ -263,7 +262,7 @@ class BlinkitMerchant(PlaywrightMerchant):
         def task(page):
             if _cached_state(location.pincode) is None:
                 self._run_location_flow(page, location)  # defensive fallback, see _search_impl
-            page.goto(url, wait_until="load")
+            self._goto(page, url, wait_until="load")
             page.wait_for_timeout(1_500)  # PDP hydration; no single element reliably marks "ready"
 
             # Confirmed live: the same cart-item payload shape repeats for

@@ -50,11 +50,10 @@ class ZeptoMerchant(PlaywrightMerchant):
         # module docstring. Until then results reflect Zepto's own default
         # serviceability location, not `location`.
         search_url = f"https://www.zeptonow.com/search?query={quote(item.name)}"
-        self._assert_allowed(search_url)
         # Waiting for full networkidle costs ~4-5s here because Zepto's page
         # never goes fully idle (background analytics/tracking). Waiting for
         # the actual result cards to appear instead cuts this to ~2s.
-        page.goto(search_url, wait_until="load")
+        self._goto(page, search_url, wait_until="load")
         try:
             # Confirmed live: waiting on the outer card anchor resolves before
             # its inner spans (name/price) are populated — a real race, not a
@@ -120,7 +119,7 @@ class ZeptoMerchant(PlaywrightMerchant):
         self._assert_allowed(url)
 
         def task(page):
-            page.goto(url, wait_until="load")
+            self._goto(page, url, wait_until="load")
             try:
                 # state="attached": a <script> tag is never "visible", Playwright's default wait state.
                 page.wait_for_selector("#productSchema", timeout=8_000, state="attached")
