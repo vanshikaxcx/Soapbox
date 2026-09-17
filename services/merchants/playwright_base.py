@@ -50,6 +50,20 @@ class PlaywrightMerchant(Merchant):
         if host not in self._allowed_domains():
             raise ValueError(f"blocked navigation outside allowlist: {host}")
 
+    def _goto(self, page, url: str, **kwargs):
+        """Navigate, enforcing the domain allowlist before AND after.
+
+        `page.goto()` follows redirects transparently — checking only the
+        requested URL (what `_assert_allowed` alone gives you) misses a
+        server-side redirect that lands somewhere off-allowlist mid-flight.
+        Connectors should call this instead of `page.goto()` directly for
+        every navigation.
+        """
+        self._assert_allowed(url)
+        response = page.goto(url, **kwargs)
+        self._assert_allowed(page.url)
+        return response
+
     def _context_options(self, location: Location | None) -> dict:
         """Base new_context() kwargs. Connectors override to add e.g. cached storage_state."""
         options: dict = {
