@@ -22,7 +22,16 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      "react-refresh/only-export-components": [
+        "warn",
+        {
+          allowConstantExport: true,
+          // Context + Provider + its consumer hook deliberately live in one
+          // file (WP-03 convention) - not a Fast Refresh hazard worth splitting
+          // the file over.
+          allowExportNames: ["useAuth", "useApiClient", "useDiagnosticTraces"],
+        },
+      ],
       // Server state is fetched through the client; a dropped promise there is a
       // silently stuck screen, so floating promises are an error, not a warning.
       "@typescript-eslint/no-floating-promises": "error",
