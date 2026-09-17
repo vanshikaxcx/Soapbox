@@ -1,4 +1,4 @@
-import { ApiError, kindForFailure, type ServerErrorCode } from "./errors";
+import { ApiError, kindForFailure } from "./errors";
 import type { IdempotencyKey } from "./idempotency";
 import { fetchTransport, type Transport } from "./transport";
 import type { components } from "./generated/schema";
@@ -44,7 +44,7 @@ export interface MutateOptions<TBody> extends GetOptions {
   expectedRevision?: number;
 }
 
-type HealthData = components["schemas"]["HealthResponse"]["data"];
+type HealthData = components["schemas"]["HealthSuccessResponse"]["data"];
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
@@ -80,7 +80,7 @@ function failureToError(status: number, envelope: Record<string, unknown> | null
   const requestId = readRequestId(envelope);
   const body = asRecord(envelope?.["error"]);
   const rawCode = body?.["code"];
-  const code = typeof rawCode === "string" ? (rawCode as ServerErrorCode) : undefined;
+  const code = typeof rawCode === "string" ? rawCode : undefined;
   const message = typeof body?.["message"] === "string" ? body["message"] : undefined;
   const details = asRecord(body?.["details"]);
   return new ApiError({
