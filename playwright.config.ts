@@ -18,8 +18,11 @@ export default defineConfig({
       url: "http://127.0.0.1:3001/health",
       reuseExistingServer: false,
       // A cold host has no cached Lambda Runtime Interface Emulator image yet;
-      // SAM Local pulls/builds it on first invocation, which can exceed 60s.
-      timeout: 180_000,
+      // SAM Local pulls the base image and then builds a function image on top
+      // of it on first invocation, which can take a long time on a slow/unstable
+      // network. Every subsequent invocation reuses the cached image, so this
+      // generous ceiling only ever costs time on a genuine first cold start.
+      timeout: 1_200_000,
     },
   ],
   projects: [{ name: "chromium", use: { browserName: "chromium" } }],

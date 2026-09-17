@@ -340,8 +340,11 @@ function Invoke-Stage5Dev {
         }
         Wait-HttpReady -Url "http://127.0.0.1:5173" -TimeoutSeconds 30 -Name "Vite"
         # A cold host has no cached Lambda Runtime Interface Emulator image yet;
-        # SAM Local pulls/builds it on first invocation, which can exceed 60s.
-        Wait-HttpReady -Url "http://127.0.0.1:3001/health" -TimeoutSeconds 180 -Name "SAM Local health API"
+        # SAM Local pulls the base image and then builds a function image on top
+        # of it on first invocation, which can take a long time on a slow/unstable
+        # network. Every subsequent invocation reuses the cached image, so this
+        # generous ceiling only ever costs time on a genuine first cold start.
+        Wait-HttpReady -Url "http://127.0.0.1:3001/health" -TimeoutSeconds 1200 -Name "SAM Local health API"
         Write-Output "Development baseline: http://127.0.0.1:5173"
         Write-Output "Health API: http://127.0.0.1:3001/health"
         Write-Output "Press Ctrl+C to stop both processes."
