@@ -1,6 +1,6 @@
 # ProofPath — Three-Day Implementation Plan of Action
 
-Status: execution plan derived from `PROOFPATH-SPEC.md`  
+Status: execution plan derived from [`docs/PROOFPATH-SPEC.md`](../docs/PROOFPATH-SPEC.md)
 Audience: four-person hackathon engineering team  
 Primary target: **Ship It**  
 Development window: **three implementation days**, followed by an optional protected submission/fix day if the event schedule permits
@@ -66,8 +66,8 @@ Each person works inside their owned directories and consumes other work through
 | --- | --- |
 | `web/**` | P1 |
 | `services/agent/**`, `services/merchants/**` | P2 |
-| `services/domain/**` commerce state, `services/simulator/**`, recovery/export handlers | P3 |
-| `infra/**`, `policies/**`, `.github/**`, job transport/adapters | P4 |
+| `services/domain/**` commerce state, `services/simulator/**` | P3 |
+| `infra/**`, `policies/**`, `.github/**`, job transport/adapters, recovery/export handlers | P4 |
 | `contracts/openapi.yaml` | Package owner proposes; affected owners and P4 approve |
 | `services/application/**` | Use-case owner; ports are reviewed by adapter owner |
 | `tests/e2e/**` | P1 owns scenarios; relevant backend owner supplies fixtures/assertions |

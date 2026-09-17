@@ -1,0 +1,64 @@
+# Environment files: templates are intentionally trackable.
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Python environments, caches, coverage, and build output.
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+pytest-cache-files-*/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Repository-managed native tools and JavaScript output.
+.tools/
+node_modules/
+web/node_modules/
+web/dist/
+playwright-report/
+test-results/
+blob-report/
+*.trace
+
+# Browser sessions, recordings, and captures.
+.playwright/
+.sessions/
+sessions/
+recordings/
+captures/
+raw-audio/
+uploads/
+*.wav
+*.mp3
+*.m4a
+*.ogg
+
+# AWS/SAM and optional LocalStack local state.
+.aws-sam/
+.sam-local/
+localstack/
+.localstack/
+localstack-data/
+
+# Private evidence and generated exports.
+evidence/private/
+private-evidence/
+exports/
+private-exports/
+
+# Editor, OS, and local tooling state.
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp

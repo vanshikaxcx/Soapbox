@@ -2,8 +2,6 @@
 
 Product requirements and implementation plan · Four-person hackathon · **Ship It primary; early Build It contingency.**
 
-> **Historical migration source — not a coequal authority.** The canonical product specification is [`docs/PROOFPATH-SPEC.md`](../docs/PROOFPATH-SPEC.md). This retained copy records the pre-migration source only.
-
 Build a new application during the event using the scope, contracts and acceptance criteria below. This document is self-contained and specifies required behavior, not completed functionality.
 
 ## 1. Product and launch scope
@@ -321,8 +319,8 @@ If Build It is selected early, replace the release plan: choose/test local STT, 
 | --- | --- | --- |
 | 1 — Frontend/voice | Shared cards, mic/transcript, Polly playback, photo/usual UI; speech API/tasks with owner 4 setup support | Demo identity flow, storyboard, first recording day 3. |
 | 2 — Agent/merchants | Container, connectors, matching/repair, extraction, grounded explanations | Two locality-tested sources early; browser limits/evidence. |
-| 3 — Transactions/recovery | Schemas, approval, simulator, callbacks, Cedar, reconciliation, guidance/export | Small reviewed guidance corpus day 2; invariant/fault tests alongside handlers. |
-| 4 — AWS/durability | SAM/stacks, hosting, jobs/outbox/queues/indexing, CI/monitoring | Early OpenSearch provision, cost tracking and explicit post-judging teardown. |
+| 3 — Transactions | Schemas, approval, simulator, provider-fact contracts, transaction-domain reconciliation rules, and commerce invariants | Small reviewed guidance corpus day 2; invariant/fault tests alongside transaction handlers. |
+| 4 — AWS/durability and recovery | SAM/stacks, hosting, jobs/outbox/queues/indexing, callback ingestion, durable reconciliation/recovery machinery, recovery handlers, guidance/case/export backend, CI/monitoring | Early OpenSearch provision, cost tracking and explicit post-judging teardown. |
 
 **Day 1:** checkpoint, contracts, voice loop, cloud skeleton and merchant tests. **Day 2:** shopping→recheck→approval→simulated happy path; photo/usual; transaction tests/guidance. **Day 3:** timeout/recovery/export, replay/security tests, first video; feature freeze by end of day. **Day 4:** protected fixes, regression, recording and submission—no new features/services. If behind, report failed gates rather than claim partial features complete.
 

@@ -1,0 +1,44 @@
+# ProofPath reviewed scanner-suppression manifest (WP-00 AC-00-21).
+#
+# This file exists so that IF a real Gitleaks/pip-audit/npm-audit finding ever
+# needs a suppression, there is already a narrow, reviewable, auditable place
+# to record it — not to pre-suppress anything. It starts with zero active
+# entries. Blanket ignores and unaudited baseline suppressions are forbidden;
+# every entry below must be a single, narrow, time-boxed exception.
+#
+# Schema: one [[suppression]] table per exception, all fields required,
+# all values double-quoted strings:
+#
+#   tool     = "gitleaks" | "pip-audit" | "npm-audit"
+#   id       = "<advisory or rule ID>"      (e.g. a CVE, GHSA, or gitleaks rule ID)
+#   scope    = "<narrow scope>"             (exact package/path/finding this covers; never "all")
+#   reason   = "<why this is safe to suppress right now>"
+#   owner    = "<person or role accountable for tracking/removing this>"
+#   approval = "<PR link, review comment, or other approval reference>"
+#   expires  = "YYYY-MM-DD"                 (explicit review/expiry date; past dates fail the security command)
+#
+# Enforcement (scripts/proofpath.ps1, Invoke-Stage6Security):
+#   - `pip-audit` entries are translated into `--ignore-vuln <id>` for both
+#     pip-audit invocations.
+#   - `gitleaks` entries have no automatic wiring yet; gitleaks has no
+#     first-class narrow allowlist-file convention this script currently
+#     integrates, so a gitleaks entry here is reviewed documentation only,
+#     and a real Gitleaks finding still fails the command until the
+#     underlying secret/false-positive is actually resolved.
+#   - `npm-audit` entries are reviewed documentation only. npm 12's
+#     `npm audit` has no clean per-vulnerability CLI suppression flag, so an
+#     npm-audit entry here does not change command exit behavior; a real
+#     `npm audit` finding still fails `security` until the dependency is
+#     upgraded or removed.
+#   - Any entry whose `expires` date has passed fails the security command
+#     outright, so an expired suppression can never silently keep suppressing.
+#
+# Example (commented out; not an active suppression):
+# [[suppression]]
+# tool     = "pip-audit"
+# id       = "GHSA-xxxx-xxxx-xxxx"
+# scope    = "services/api/requirements.txt: some-package 1.2.3"
+# reason   = "Fix not yet released upstream; not reachable from ProofPath's usage of this dependency."
+# owner    = "P4 platform owner"
+# approval = "https://github.com/<org>/<repo>/pull/<number>#issuecomment-<id>"
+# expires  = "2026-12-31"
