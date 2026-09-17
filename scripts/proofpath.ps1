@@ -186,8 +186,19 @@ function Invoke-OpenApiGenerate {
 function Invoke-OpenApiCheck {
     $paths = Get-Stage3Paths
     Invoke-OpenApiSubsetCheck -Paths $paths
-    & sam validate --template-file $paths.SamTemplate
-    if ($LASTEXITCODE -ne 0) { throw "SAM template validation failed." }
+    # `sam validate` performs no AWS calls for a local structural check, but its boto3
+    # session still requires some region value. Use a scoped placeholder only when the
+    # host has none configured; WP-01 owns the real deployment region decision.
+    $previousRegion = $env:AWS_DEFAULT_REGION
+    if ([string]::IsNullOrEmpty($previousRegion)) { $env:AWS_DEFAULT_REGION = "us-east-1" }
+    try {
+        & sam validate --template-file $paths.SamTemplate
+        if ($LASTEXITCODE -ne 0) { throw "SAM template validation failed." }
+    }
+    finally {
+        if ([string]::IsNullOrEmpty($previousRegion)) { Remove-Item Env:\AWS_DEFAULT_REGION -ErrorAction SilentlyContinue }
+        else { $env:AWS_DEFAULT_REGION = $previousRegion }
+    }
     Invoke-OpenApiGeneration -Paths $paths
     $requirements = "services/api/requirements.txt"
     & uv export --locked --no-dev --no-emit-project --format requirements-txt --output-file $requirements
