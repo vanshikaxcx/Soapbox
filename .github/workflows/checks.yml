@@ -26,6 +26,11 @@ jobs:
   locks-and-generated:
     runs-on: ubuntu-24.04
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
       - name: Set up toolchain
         uses: ./.github/actions/setup-toolchain
         with:
@@ -44,6 +49,11 @@ jobs:
   format-lint-type:
     runs-on: ubuntu-24.04
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
       - name: Set up toolchain
         uses: ./.github/actions/setup-toolchain
         with:
@@ -64,6 +74,11 @@ jobs:
   unit-contract-integration:
     runs-on: ubuntu-24.04
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
       - name: Set up toolchain
         uses: ./.github/actions/setup-toolchain
         with:
@@ -80,6 +95,11 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
       - name: Set up toolchain
         uses: ./.github/actions/setup-toolchain
         with:
@@ -98,13 +118,17 @@ jobs:
   security:
     runs-on: ubuntu-24.04
     steps:
-      - name: Set up toolchain (full history for Gitleaks)
+      - name: Checkout (full history for Gitleaks)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up toolchain
         uses: ./.github/actions/setup-toolchain
         with:
           node-version: ${{ env.PROOFPATH_NODE_VERSION }}
           uv-version: ${{ env.PROOFPATH_UV_VERSION }}
           python-version: ${{ env.PROOFPATH_PYTHON_VERSION }}
-          full-history: "true"
       - name: Install web dependencies
         run: npm --prefix web ci
       - name: Sync Python dependencies (frozen)
@@ -115,6 +139,11 @@ jobs:
   web-smoke:
     runs-on: ubuntu-24.04
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
       - name: Set up toolchain
         uses: ./.github/actions/setup-toolchain
         with:
