@@ -29,5 +29,21 @@ Under D-1's rule as written, **this means neither live merchant's basket can eve
 
 **P2's recommendation: Option A for now.** It requires no rule change and no new fee-estimation work, and it's consistent with everything else in this project labeling live vs. simulated/estimated explicitly rather than blurring them. Revisit if the demo specifically needs to show a live-merchant basket reaching approval, not just a fixture one.
 
+## Addendum, 2026-09-17 — the same gap also blocks *comparison*, not just approval
+
+Now that WP-06 (basket assembly + comparison) is built and tested against
+these facts (`services/agent/compare_test.py`), it confirms the D-1
+consequence goes one layer earlier than approval: **two live merchants whose
+fees are both `"estimated"` can never be declared cheaper than one another
+by `compare_baskets`, at any price gap** — not a WP-06 bug, WP-02's own
+`basket_test.py::test_two_estimated_baskets_are_not_comparable` is explicit
+that this is intended. So a live, two-merchant comparison run today reports
+`winner_merchant_id = null` and each basket's known subtotal, never a "this
+one's cheaper" verdict — see `docs/specs/WP-06-search-comparison-basket-
+repair.md` for the detail. Fixture-mode comparisons are unaffected (the
+fixture connector's fee is `"complete"`). Doesn't change the Option A
+recommendation above; just extends "which parts of the live path this
+affects" from "quote/approval" to "quote/approval and comparison ranking."
+
 ---
 Written 2026-09-17, from P2's side, against `origin/feat/wp-02-08-09-transaction-safety-p3` commit `d873fc4`. Needs P3 (and P1 for D-1/Option C if pursued) to actually read and respond — this file is P2's position, not a mutual agreement yet.
