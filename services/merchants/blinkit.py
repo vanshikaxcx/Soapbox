@@ -34,6 +34,7 @@ to div[role="button"] elements with a numeric id (that id is the same
 This is more fragile than Zepto's data-slot-id attributes and is exactly
 the kind of thing scripts/spike_merchant.py exists to re-verify.
 """
+
 from __future__ import annotations
 
 import re
@@ -101,6 +102,28 @@ def _lock_for(pincode: str) -> threading.Lock:
         return lock
 
 
+def _elapsed_deadline_error(merchant_name: str, deadline: datetime) -> MerchantError | None:
+    """`None` if there's still time; a typed TIMEOUT error if there isn't.
+
+    `warm_location()`'s ~8-9s cold flow has no awareness of a caller's
+    deadline (see its own docstring: safe to call standalone). Without this
+    check, `search()`/`refresh()` called with an already-elapsed deadline
+    would still pay that full cost before `_with_page()`'s own (otherwise
+    correct) deadline check ever got a chance to run -- confirmed live: an
+    elapsed-deadline `search()` call took ~9s instead of returning
+    immediately. Checked here, before `warm_location()`, for the same
+    reason `_with_page()` checks it before touching the browser pool at all.
+    """
+    if datetime.now(UTC) >= deadline:
+        return MerchantError(
+            merchant=merchant_name,
+            code=MerchantErrorCode.TIMEOUT,
+            message="deadline already elapsed before task started",
+            occurred_at=datetime.now(UTC),
+        )
+    return None
+
+
 def warm_location(pincode: str, fetch_deadline_seconds: int = 45) -> None:
     """Populate the session-state cache for `pincode`, if not already cached.
 
@@ -161,6 +184,9 @@ class BlinkitMerchant(PlaywrightMerchant):
     def search(
         self, location: Location, item: ItemQuery, deadline: datetime
     ) -> list[Observation] | MerchantError:
+        early_timeout = _elapsed_deadline_error(self.name, deadline)
+        if early_timeout is not None:
+            return early_timeout
         # Block here, before _with_page() creates this task's own context, so
         # that context creation's _context_options() cache lookup below is
         # guaranteed to see a populated cache rather than racing warm-up.
@@ -259,6 +285,9 @@ class BlinkitMerchant(PlaywrightMerchant):
     def refresh(
         self, location: Location, sku: str, deadline: datetime
     ) -> Observation | MerchantError:
+        early_timeout = _elapsed_deadline_error(self.name, deadline)
+        if early_timeout is not None:
+            return early_timeout
         # Same reasoning as search() above: block before this task's own
         # context is created, so its _context_options() cache lookup sees a
         # populated cache instead of racing warm-up.
