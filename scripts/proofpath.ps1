@@ -339,7 +339,9 @@ function Invoke-Stage5Dev {
             Start-Process -FilePath "sam" -ArgumentList @("local", "start-api", "--template", ".aws-sam/build/template.yaml", "--host", "127.0.0.1", "--port", "3001") -WorkingDirectory $script:RepositoryRoot -PassThru
         }
         Wait-HttpReady -Url "http://127.0.0.1:5173" -TimeoutSeconds 30 -Name "Vite"
-        Wait-HttpReady -Url "http://127.0.0.1:3001/health" -TimeoutSeconds 60 -Name "SAM Local health API"
+        # A cold host has no cached Lambda Runtime Interface Emulator image yet;
+        # SAM Local pulls/builds it on first invocation, which can exceed 60s.
+        Wait-HttpReady -Url "http://127.0.0.1:3001/health" -TimeoutSeconds 180 -Name "SAM Local health API"
         Write-Output "Development baseline: http://127.0.0.1:5173"
         Write-Output "Health API: http://127.0.0.1:3001/health"
         Write-Output "Press Ctrl+C to stop both processes."

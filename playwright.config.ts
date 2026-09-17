@@ -17,7 +17,9 @@ export default defineConfig({
         "sam local start-api --template .aws-sam/build/template.yaml --host 127.0.0.1 --port 3001",
       url: "http://127.0.0.1:3001/health",
       reuseExistingServer: false,
-      timeout: 60_000,
+      // A cold host has no cached Lambda Runtime Interface Emulator image yet;
+      // SAM Local pulls/builds it on first invocation, which can exceed 60s.
+      timeout: 180_000,
     },
   ],
   projects: [{ name: "chromium", use: { browserName: "chromium" } }],
