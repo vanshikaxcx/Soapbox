@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from services.agent.config import ITEM_FETCH_DEADLINE_SECONDS
 from services.merchants.models import ItemQuery, Location, Mode, Observation
@@ -14,8 +15,8 @@ from services.merchants.registry import build_registry
 
 
 def search_merchants(
-    location: dict, item: dict, mode: str = "live"
-) -> list[dict]:
+    location: dict[str, Any], item: dict[str, Any], mode: str = "live"
+) -> list[dict[str, Any]]:
     """Search all registered merchants for one item.
 
     Args:
@@ -40,7 +41,10 @@ def search_merchants(
     # merchant alone rather than their sum.
     results: list[Observation] = []
     with ThreadPoolExecutor(max_workers=max(len(registry), 1)) as executor:
-        futures = [executor.submit(merchant.search, loc, query, deadline) for merchant in registry.values()]
+        futures = [
+            executor.submit(merchant.search, loc, query, deadline)
+            for merchant in registry.values()
+        ]
         for future in futures:
             outcome = future.result()
             if isinstance(outcome, list):

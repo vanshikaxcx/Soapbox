@@ -10,7 +10,16 @@ import os
 from datetime import UTC, datetime
 
 from .base import Merchant
-from .models import FeeAssessment, ItemQuery, Line, Location, MerchantError, Mode, Observation
+from .models import (
+    ExtractionStatus,
+    FeeAssessment,
+    ItemQuery,
+    Line,
+    Location,
+    MerchantError,
+    Mode,
+    Observation,
+)
 
 _FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
 
@@ -38,7 +47,7 @@ class FixtureMerchant(Merchant):
                 verified_location=location,
                 fetch_time=datetime.now(UTC),
                 evidence_key=f"fixture:{self.name}:{row['sku']}",
-                extraction_status="ok",
+                extraction_status=ExtractionStatus.OK,
                 mode=Mode.FIXTURE,
             )
             for row in matches
@@ -58,7 +67,7 @@ class FixtureMerchant(Merchant):
             verified_location=location,
             fetch_time=datetime.now(UTC),
             evidence_key=f"fixture:{self.name}:{row['sku']}",
-            extraction_status="ok",
+            extraction_status=ExtractionStatus.OK,
             mode=Mode.FIXTURE,
         )
 

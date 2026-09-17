@@ -2,6 +2,24 @@
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from playwright.sync_api import ElementHandle
+
+
+def require_text(element: ElementHandle | None) -> str:
+    """Read `.inner_text()` off a query_selector() result, or fail loudly.
+
+    query_selector() returns None when the selector doesn't match; calling
+    .inner_text() on None is a crash, not a typed failure. Both connectors
+    wrap card extraction in a try/except that skips the card on any
+    exception — raising ValueError here is what actually triggers that
+    skip, rather than letting an untyped AttributeError do it implicitly.
+    """
+    if element is None:
+        raise ValueError("expected element not found")
+    return element.inner_text()
 
 
 def parse_inr_to_paise(text: str) -> int:

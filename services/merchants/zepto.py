@@ -21,6 +21,9 @@ import re
 from datetime import UTC, datetime
 from urllib.parse import quote
 
+from playwright.sync_api import Page
+
+from .fees import placeholder_line_hash, zepto_estimated_fees
 from .models import (
     ExtractionStatus,
     FeeAssessment,
@@ -32,8 +35,7 @@ from .models import (
     Mode,
     Observation,
 )
-from .fees import placeholder_line_hash, zepto_estimated_fees
-from .parsing import parse_inr_to_paise, parse_pack_size
+from .parsing import parse_inr_to_paise, parse_pack_size, require_text
 from .playwright_base import PlaywrightMerchant
 
 _PRODUCT_SCHEMA_RE = re.compile(
@@ -45,7 +47,9 @@ class ZeptoMerchant(PlaywrightMerchant):
     name = "zepto"
     browser_engine = "lightpanda"
 
-    def _search_impl(self, page, location: Location, item: ItemQuery):
+    def _search_impl(
+        self, page: Page, location: Location, item: ItemQuery
+    ) -> list[Observation] | MerchantError:
         # TODO(spike): set location.pincode explicitly before searching; see
         # module docstring. Until then results reflect Zepto's own default
         # serviceability location, not `location`.
@@ -73,10 +77,10 @@ class ZeptoMerchant(PlaywrightMerchant):
         observations: list[Observation] = []
         for card in cards[:10]:
             try:
-                name = card.query_selector('[data-slot-id="ProductName"] span').inner_text()
-                price_text = card.query_selector('[data-slot-id="EdlpPrice"] span').inner_text()
+                name = require_text(card.query_selector('[data-slot-id="ProductName"] span'))
+                price_text = require_text(card.query_selector('[data-slot-id="EdlpPrice"] span'))
                 price_paise = parse_inr_to_paise(price_text)
-                pack_text = card.query_selector('[data-slot-id="PackSize"] span').inner_text()
+                pack_text = require_text(card.query_selector('[data-slot-id="PackSize"] span'))
                 pack_size, unit = parse_pack_size(pack_text) or (item.quantity, item.unit)
                 out_of_stock = (
                     card.query_selector('[data-is-out-of-stock="true"]') is not None
@@ -114,14 +118,17 @@ class ZeptoMerchant(PlaywrightMerchant):
             )
         return observations
 
-    def refresh(self, location: Location, sku: str, deadline: datetime):
+    def refresh(
+        self, location: Location, sku: str, deadline: datetime
+    ) -> Observation | MerchantError:
         url = f"https://www.zeptonow.com/{sku.lstrip('/')}"
         self._assert_allowed(url)
 
-        def task(page):
+        def task(page: Page) -> Observation | MerchantError:
             self._goto(page, url, wait_until="load")
             try:
-                # state="attached": a <script> tag is never "visible", Playwright's default wait state.
+                # state="attached": a <script> tag is never "visible",
+                # Playwright's default wait state.
                 page.wait_for_selector("#productSchema", timeout=8_000, state="attached")
             except Exception:  # noqa: BLE001
                 return MerchantError(

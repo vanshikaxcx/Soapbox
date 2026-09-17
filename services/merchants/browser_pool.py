@@ -28,8 +28,9 @@ import atexit
 import shutil
 import subprocess
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, TypeVar
+from typing import TypeVar
 
 from playwright.sync_api import Browser, Playwright, sync_playwright
 
@@ -52,7 +53,7 @@ _executors: dict[str, ThreadPoolExecutor] = {
 # (via run_on_engine_thread), so it needs no lock despite being shared.
 _playwright: dict[str, Playwright] = {}
 _browsers: dict[str, Browser] = {}
-_lightpanda_process: subprocess.Popen | None = None
+_lightpanda_process: subprocess.Popen[bytes] | None = None
 
 
 def run_on_engine_thread(engine: str, fn: Callable[[], T]) -> T:
@@ -120,7 +121,9 @@ def _connect_lightpanda(pw: Playwright) -> Browser:
         except Exception as exc:  # noqa: BLE001 - retry until the CDP server is ready
             last_error = exc
             time.sleep(_LIGHTPANDA_CONNECT_RETRY_DELAY_SECONDS)
-    raise RuntimeError(f"lightpanda CDP server never became reachable at {endpoint}") from last_error
+    raise RuntimeError(
+        f"lightpanda CDP server never became reachable at {endpoint}"
+    ) from last_error
 
 
 def get_browser(engine: str) -> Browser:

@@ -39,9 +39,13 @@ from __future__ import annotations
 import re
 import threading
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from urllib.parse import quote
 
+from playwright.sync_api import Page, StorageState
+
 from .evidence import LocalDiskEvidenceSink
+from .fees import blinkit_estimated_fees, placeholder_line_hash
 from .models import (
     ExtractionStatus,
     FeeAssessment,
@@ -53,8 +57,7 @@ from .models import (
     Mode,
     Observation,
 )
-from .fees import blinkit_estimated_fees, placeholder_line_hash
-from .parsing import parse_inr_to_paise, parse_pack_size
+from .parsing import parse_inr_to_paise, parse_pack_size, require_text
 from .playwright_base import PlaywrightMerchant
 
 # PDP's embedded cart-action payload (see module docstring). Field order
@@ -70,7 +73,7 @@ _CART_ITEM_RE = re.compile(
 # expiry: a stale entry fails the same way an expired real session would
 # (empty results / layout-changed), which is already a handled error path.
 _location_state_lock = threading.Lock()
-_location_state_cache: dict[str, dict] = {}
+_location_state_cache: dict[str, StorageState] = {}
 
 # One lock per pincode, created lazily, so concurrent callers for the same
 # pincode block on each other (run the slow flow once) while callers for a
@@ -79,12 +82,12 @@ _pincode_locks_lock = threading.Lock()
 _pincode_locks: dict[str, threading.Lock] = {}
 
 
-def _cached_state(pincode: str) -> dict | None:
+def _cached_state(pincode: str) -> StorageState | None:
     with _location_state_lock:
         return _location_state_cache.get(pincode)
 
 
-def _cache_state(pincode: str, state: dict) -> None:
+def _cache_state(pincode: str, state: StorageState) -> None:
     with _location_state_lock:
         _location_state_cache[pincode] = state
 
@@ -124,7 +127,7 @@ class BlinkitMerchant(PlaywrightMerchant):
     name = "blinkit"
     browser_engine = "chromium"
 
-    def _context_options(self, location: Location | None) -> dict:
+    def _context_options(self, location: Location | None) -> dict[str, Any]:
         options = super()._context_options(location)
         if location is not None:
             cached = _cached_state(location.pincode)
@@ -132,7 +135,7 @@ class BlinkitMerchant(PlaywrightMerchant):
                 options["storage_state"] = cached
         return options
 
-    def _run_location_flow(self, page, location: Location) -> None:
+    def _run_location_flow(self, page: Page, location: Location) -> None:
         """The actual UI flow. Only ever invoked via warm_location()'s lock,
         so it never runs twice concurrently for the same pincode."""
         self._goto(page, "https://blinkit.com/", wait_until="load")
@@ -164,7 +167,9 @@ class BlinkitMerchant(PlaywrightMerchant):
         warm_location(location.pincode)
         return super().search(location, item, deadline)
 
-    def _search_impl(self, page, location: Location, item: ItemQuery):
+    def _search_impl(
+        self, page: Page, location: Location, item: ItemQuery
+    ) -> list[Observation] | MerchantError:
         if _cached_state(location.pincode) is None:
             # Defensive fallback only: search() above already calls
             # warm_location(), so this runs in practice only if this method
@@ -203,10 +208,10 @@ class BlinkitMerchant(PlaywrightMerchant):
         observations: list[Observation] = []
         for card in cards[:10]:
             try:
-                name = card.query_selector(
-                    ".tw-text-300.tw-font-semibold.tw-line-clamp-2"
-                ).inner_text()
-                price_text = card.query_selector(".tw-text-200.tw-font-semibold").inner_text()
+                name = require_text(
+                    card.query_selector(".tw-text-300.tw-font-semibold.tw-line-clamp-2")
+                )
+                price_text = require_text(card.query_selector(".tw-text-200.tw-font-semibold"))
                 pack_el = card.query_selector(
                     ".tw-text-200.tw-font-medium.tw-line-clamp-1.tw-text-base-green"
                 )
@@ -251,7 +256,9 @@ class BlinkitMerchant(PlaywrightMerchant):
             )
         return observations
 
-    def refresh(self, location: Location, sku: str, deadline: datetime):
+    def refresh(
+        self, location: Location, sku: str, deadline: datetime
+    ) -> Observation | MerchantError:
         # Same reasoning as search() above: block before this task's own
         # context is created, so its _context_options() cache lookup sees a
         # populated cache instead of racing warm-up.
@@ -259,7 +266,7 @@ class BlinkitMerchant(PlaywrightMerchant):
         url = f"https://blinkit.com/prn/x/prid/{sku}"
         self._assert_allowed(url)
 
-        def task(page):
+        def task(page: Page) -> Observation | MerchantError:
             if _cached_state(location.pincode) is None:
                 self._run_location_flow(page, location)  # defensive fallback, see _search_impl
             self._goto(page, url, wait_until="load")

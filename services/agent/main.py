@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import threading
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
@@ -32,13 +33,13 @@ def _warm_blinkit_location() -> None:
 
 
 @app.get("/health")
-def health() -> dict:
+def health() -> dict[str, Any]:
     return {"status": "ok", "time": datetime.now(UTC).isoformat()}
 
 
 class SearchRequest(BaseModel):
-    location: dict
-    item: dict
+    location: dict[str, Any]
+    item: dict[str, Any]
     mode: str = "live"
 
 
@@ -50,7 +51,9 @@ def _require_auth(authorization: str | None) -> None:
 
 
 @app.post("/tasks/search")
-def run_search(req: SearchRequest, authorization: str | None = Header(default=None)) -> dict:
+def run_search(
+    req: SearchRequest, authorization: str | None = Header(default=None)
+) -> dict[str, Any]:
     """Thin HTTP wrapper around the allowlisted search_merchants tool.
 
     This is the deterministic path used directly by tests and by the workflow
