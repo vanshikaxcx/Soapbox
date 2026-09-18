@@ -226,7 +226,29 @@ def test_a_fee_change_appears_as_its_own_change() -> None:
     )
     fees = [c for c in diff.changes if c.kind.value == "fee"]
     assert len(fees) == 1
-    assert (fees[0].before, fees[0].after) == ("1000", "3000")
+    assert (fees[0].before, fees[0].after) == ("1000 (verified)", "3000 (verified)")
+
+
+def test_a_fee_that_becomes_an_estimate_at_the_same_amount_is_still_a_change() -> None:
+    """The amount is unchanged, but the offer is not.
+
+    A verified 1000 approves as "Approve simulated Rs 590.00"; an estimated 1000
+    approves as "up to". Without confidence in the change text the two compare
+    equal, and the control silently flips between them with nothing for the
+    shopper to accept.
+    """
+    world = World()
+    _prep, diff = world.prepare_ok(
+        merchant_selling(
+            58_000,
+            fees=(
+                Charge.known_charge(ChargeKind.DELIVERY, Money.paise(1_000), Confidence.ESTIMATED),
+            ),
+        )
+    )
+    fees = [c for c in diff.changes if c.kind.value == "fee"]
+    assert len(fees) == 1
+    assert (fees[0].before, fees[0].after) == ("1000 (verified)", "1000 (estimated)")
 
 
 def test_the_diff_hash_is_stable_across_identical_refreshes() -> None:
@@ -434,3 +456,21 @@ def test_build_quote_refuses_before_it_builds_anything() -> None:
         now=NOW,
     )
     assert isinstance(result, QuoteNotConstructible)
+
+
+def test_a_selection_smaller_than_one_pack_is_refused_not_quoted_at_zero() -> None:
+    """Integer division used to make this a free line carrying full confidence.
+
+    500g selected against a 1kg pack gave packs == 0, price.times(0) == Rs 0.00,
+    and Amount.known() defaults to VERIFIED -- an exactly-priced free item. A
+    partial pack has no honest price, so it is refused the same way a changed
+    pack is.
+    """
+    world = World()
+    half = a_basket().model_copy(
+        update={"lines": (a_basket().lines[0].model_copy(update={"selected_base_units": 500}),)}
+    )
+    _prep, _diff = world.prepare_ok(merchant_selling(59_500), basket=half)
+    line = world.facts().lines[0]
+    assert line.line_total.amount is None
+    assert line.failure_code == "quantity_not_a_whole_pack"

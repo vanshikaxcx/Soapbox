@@ -151,7 +151,24 @@ def refresh_line(
             failure_code="pack_size_changed",
         )
 
-    packs = line.selected_base_units // line.pack_base_units
+    packs, remainder = divmod(line.selected_base_units, line.pack_base_units)
+    if packs == 0 or remainder:
+        # The selection is not a whole number of packs, so no honest price
+        # exists: truncating gives 0 packs (a line quoted at Rs 0.00 carrying
+        # full confidence) or silently under-supplies the shopper. Refuse, the
+        # same way the changed-pack branch above refuses rather than guessing.
+        return RefreshedLine(
+            item_id=line.item_id,
+            sku=observed.sku,
+            name=observed.name,
+            quantity_base=line.selected_base_units,
+            dimension=observed.pack.dimension.value,
+            unit_price=observed.price,
+            line_total=Amount.unknown(),
+            pack_base_units=observed.pack.value_base,
+            failure_code="quantity_not_a_whole_pack",
+        )
+
     return RefreshedLine(
         item_id=line.item_id,
         sku=observed.sku,
@@ -257,7 +274,16 @@ def _fee_changes(basket: Basket, facts: RefreshedFacts) -> list[Change]:
 
 
 def _charge_text(charge: Charge) -> str:
-    return "unknown" if charge.amount is None else str(charge.amount.amount_paise)
+    """The fee as the shopper would be shown it, confidence included.
+
+    Confidence is part of the value, not decoration: the same paise at
+    ``verified`` and at ``estimated`` are different offers, because one approves
+    as an exact price and the other as a ceiling ("up to"). Leaving it out let a
+    fee flip between those with no entry in the change list to accept.
+    """
+    if charge.amount is None:
+        return "unknown"
+    return f"{charge.amount.amount_paise} ({charge.confidence.value})"
 
 
 def build_quote(
