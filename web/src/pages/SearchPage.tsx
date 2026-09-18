@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { AsyncStateView } from "../components/async/AsyncStateView";
 import { BasketCard } from "../components/cards/BasketCard";
@@ -9,7 +10,8 @@ import { useFixtureAsyncState } from "../fixtures/useFixtureAsyncState";
 /** `/searches/:id` - two-source comparison. Real data lands with WP-06's contract. */
 export function SearchPage() {
   const { id } = useParams<{ id: string }>();
-  const state = useFixtureAsyncState({ baskets: fixtureBaskets, evidence: fixtureEvidence });
+  const searchData = useMemo(() => ({ baskets: fixtureBaskets, evidence: fixtureEvidence }), []);
+  const state = useFixtureAsyncState(searchData);
 
   return (
     <div className="pp-page">

@@ -14,8 +14,7 @@ export function useFixtureAsyncState<T>(data: T, delayMs = 300): AsyncState<T> {
     setState({ status: "loading" });
     const timer = setTimeout(() => setState({ status: "success", data }), delayMs);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fixtures are static per call site
-  }, [delayMs]);
+  }, [data, delayMs]);
 
   return state;
 }

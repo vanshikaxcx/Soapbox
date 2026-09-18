@@ -1,3 +1,4 @@
+import { formatDateTime } from "./format";
 import type { RecoveryCase } from "./types";
 
 const FACT_LABEL: Record<RecoveryCase["facts"][number]["status"], string> = {
@@ -17,7 +18,7 @@ export function RecoveryCard({ caseId, status, openedAt, facts }: RecoveryCase) 
       <header>
         <h3>Case {caseId}</h3>
         <p>
-          Status: {status} · opened {new Date(openedAt).toLocaleString()}
+          Status: {status} · opened {formatDateTime(openedAt)}
         </p>
       </header>
       <dl className="pp-recovery__facts">

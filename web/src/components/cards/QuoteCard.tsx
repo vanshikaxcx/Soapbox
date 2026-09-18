@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { formatPaise } from "./format";
+import { formatPaise, formatTime } from "./format";
 import type { ExactQuote } from "./types";
 import { SimulatedCheckoutNotice } from "./NoticeCard";
 
@@ -55,7 +55,7 @@ export function QuoteCard({ quote, onApprove, disabled = false }: QuoteCardProps
           <dd>{quote.deliveryTerms}</dd>
         </div>
       </dl>
-      <p className="pp-quote__expiry">Quote expires {new Date(quote.expiresAt).toLocaleTimeString()}</p>
+      <p className="pp-quote__expiry">Quote expires {formatTime(quote.expiresAt)}</p>
       <button
         type="button"
         className="pp-button pp-button--primary pp-button--approve"

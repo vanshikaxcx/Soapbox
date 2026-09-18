@@ -1,3 +1,4 @@
+import { formatDateTime } from "./format";
 import type { EvidenceRecord } from "./types";
 
 export function EvidenceCard({ merchant, locality, fetchedAt, sourceUrl, mode, freshnessLabel }: EvidenceRecord) {
@@ -14,7 +15,7 @@ export function EvidenceCard({ merchant, locality, fetchedAt, sourceUrl, mode, f
         </div>
         <div>
           <dt>Fetched</dt>
-          <dd>{new Date(fetchedAt).toLocaleString()}</dd>
+          <dd>{formatDateTime(fetchedAt)}</dd>
         </div>
         <div>
           <dt>Freshness</dt>
