@@ -18,6 +18,20 @@ from services.domain.money import Confidence
 #: On every quote, approval and payment surface. SPEC section 1.
 SIMULATION_DISCLAIMER = "Simulated checkout · no money moved · no retailer order placed."
 
+#: Shown wherever an amount is a ceiling rather than an exact price, i.e.
+#: whenever `amount_is_ceiling` is true. The mode and fixture labels do not
+#: cover this: a live quote is live data and still carries an estimated fee.
+#:
+#: It says "should not exceed" rather than "will not", because the bound is
+#: best-effort. WP-02-A1 s6 records two ways it can be beaten -- an unmodelled
+#: late-night surcharge, and published schedules drifting with no staleness
+#: signal -- and a shopper approving a maximum is entitled to know which kind
+#: of maximum it is.
+ESTIMATED_FEES_NOTE = (
+    "Fees estimated from each store's published charges, not read from your "
+    "cart. Your total should not exceed the amount shown."
+)
+
 #: Wherever fixture data is shown: comparison, quote and export.
 FIXTURE_LABEL = "Demonstration data — fixture prices, not current retailer offers"
 
@@ -113,5 +127,6 @@ __all__ = [
     "PaymentCopy",
     "approve_label",
     "APPROVE_CEILING_LABEL",
+    "ESTIMATED_FEES_NOTE",
     "lower_bound_label",
 ]

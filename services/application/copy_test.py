@@ -14,6 +14,7 @@ import pytest
 from services.application.copy import (
     APPROVE_CEILING_LABEL,
     APPROVE_LABEL,
+    ESTIMATED_FEES_NOTE,
     FIXTURE_LABEL,
     JOB_FAILED,
     SIMULATION_DISCLAIMER,
@@ -122,3 +123,27 @@ def test_the_exposure_message_does_not_invite_a_second_attempt() -> None:
     wording = BlockedCopy.EXPOSURE.value.lower()
     assert "try again" not in wording
     assert "confirming" in wording
+
+
+def test_the_estimated_fees_note_says_where_the_fees_came_from() -> None:
+    """WP-02-A1 s6: mode and fixture labels do not cover an estimated fee.
+
+    A live quote is live data and can still carry a fee estimated from a
+    published schedule rather than read from the cart. Without this the shopper
+    approves "up to" a bound with nothing telling them it is a bound, or where
+    the number came from.
+    """
+    assert "estimated" in ESTIMATED_FEES_NOTE.lower()
+    assert "published" in ESTIMATED_FEES_NOTE.lower()
+
+
+def test_the_note_does_not_promise_a_guarantee_it_cannot_keep() -> None:
+    """The ceiling is best-effort, and the wording has to admit that.
+
+    WP-02-A1 s6 records two ways it can be beaten: an unmodelled late-night
+    surcharge, and schedules drifting with no staleness signal. "will not
+    exceed" would be a promise; "should not exceed" is the truth.
+    """
+    assert "should not exceed" in ESTIMATED_FEES_NOTE
+    assert "will not exceed" not in ESTIMATED_FEES_NOTE
+    assert "guarantee" not in ESTIMATED_FEES_NOTE.lower()
