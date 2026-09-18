@@ -12,7 +12,12 @@ const FACT_LABEL: Record<RecoveryCase["facts"][number]["status"], string> = {
  * creates an order, or initiates a refund (SPEC/AGENTS.md - recovery may
  * only read/query existing facts).
  */
-export function RecoveryCard({ caseId, status, openedAt, facts }: RecoveryCase) {
+export function RecoveryCard({
+  caseId,
+  status,
+  openedAt,
+  facts,
+}: RecoveryCase) {
   return (
     <section className="pp-card pp-recovery" aria-label={`Case ${caseId}`}>
       <header>
@@ -23,7 +28,10 @@ export function RecoveryCard({ caseId, status, openedAt, facts }: RecoveryCase) 
       </header>
       <dl className="pp-recovery__facts">
         {facts.map((fact) => (
-          <div key={fact.label} className={`pp-recovery__fact pp-recovery__fact--${fact.status}`}>
+          <div
+            key={fact.label}
+            className={`pp-recovery__fact pp-recovery__fact--${fact.status}`}
+          >
             <dt>{fact.label}</dt>
             <dd>
               {FACT_LABEL[fact.status]}

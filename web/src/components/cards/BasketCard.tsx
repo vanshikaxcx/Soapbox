@@ -7,22 +7,34 @@ const CONFIDENCE_LABEL: Record<BasketSummary["confidence"], string> = {
   unknown: "Fees unknown — may change at checkout",
 };
 
-export function BasketCard({ merchant, lines, totalPaise, confidence, mode }: BasketSummary) {
+export function BasketCard({
+  merchant,
+  lines,
+  totalPaise,
+  confidence,
+  mode,
+}: BasketSummary) {
   return (
     <section className="pp-card pp-basket" aria-label={`Basket at ${merchant}`}>
       <header className="pp-basket__header">
         <h3>{merchant}</h3>
-        {mode === "fixture" && <span className="pp-badge pp-badge--fixture">Fixture data</span>}
+        {mode === "fixture" && (
+          <span className="pp-badge pp-badge--fixture">Fixture data</span>
+        )}
       </header>
       <ul className="pp-basket__lines">
         {lines.map((line) => (
           <li key={line.id} className="pp-basket__line">
             <span className="pp-basket__name">
               {line.name}
-              {line.brand !== undefined && <span className="pp-basket__brand"> · {line.brand}</span>}
+              {line.brand !== undefined && (
+                <span className="pp-basket__brand"> · {line.brand}</span>
+              )}
             </span>
             <span className="pp-basket__quantity">{line.quantity}</span>
-            <span className="pp-basket__price">{formatPaise(line.pricePaise)}</span>
+            <span className="pp-basket__price">
+              {formatPaise(line.pricePaise)}
+            </span>
           </li>
         ))}
       </ul>

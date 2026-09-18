@@ -30,7 +30,9 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
   if (status === "unauthenticated" || status === "expired") {
     return (
       <div role="status" aria-live="polite" className="pp-boundary-loading">
-        {status === "expired" ? "Your session ended. Redirecting you to sign in…" : "Redirecting you to sign in…"}
+        {status === "expired"
+          ? "Your session ended. Redirecting you to sign in…"
+          : "Redirecting you to sign in…"}
       </div>
     );
   }

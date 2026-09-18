@@ -20,9 +20,13 @@ export interface TransportResponse {
  * nothing below this line knows about `fetch`, so no test needs MSW or a second
  * backend to exercise error mapping (WP-03: no second backend).
  */
-export type Transport = (request: TransportRequest) => Promise<TransportResponse>;
+export type Transport = (
+  request: TransportRequest,
+) => Promise<TransportResponse>;
 
-export function fetchTransport(fetchImpl: typeof globalThis.fetch = globalThis.fetch): Transport {
+export function fetchTransport(
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch,
+): Transport {
   return async (request) => {
     let response: Response;
     try {
@@ -35,7 +39,10 @@ export function fetchTransport(fetchImpl: typeof globalThis.fetch = globalThis.f
     } catch (cause) {
       throw new ApiError({
         kind: request.signal?.aborted === true ? "timeout" : "network",
-        message: request.signal?.aborted === true ? "Request timed out." : "Could not reach ProofPath.",
+        message:
+          request.signal?.aborted === true
+            ? "Request timed out."
+            : "Could not reach ProofPath.",
         cause,
       });
     }

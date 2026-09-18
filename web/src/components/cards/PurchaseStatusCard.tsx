@@ -6,10 +6,18 @@ import type { PurchaseStatus } from "./types";
  * derived "purchase status" (SPEC/AGENTS.md: "payment success does not prove
  * an order exists; refund pending is not refund completed").
  */
-export function PurchaseStatusCard({ purchaseId, payment, order, refund }: PurchaseStatus) {
+export function PurchaseStatusCard({
+  purchaseId,
+  payment,
+  order,
+  refund,
+}: PurchaseStatus) {
   const ambiguous = payment === "succeeded" && order === "unknown";
   return (
-    <section className="pp-card pp-purchase-status" aria-label={`Purchase ${purchaseId} status`}>
+    <section
+      className="pp-card pp-purchase-status"
+      aria-label={`Purchase ${purchaseId} status`}
+    >
       <dl>
         <div>
           <dt>Payment</dt>
@@ -27,7 +35,10 @@ export function PurchaseStatusCard({ purchaseId, payment, order, refund }: Purch
       {ambiguous && (
         <p role="alert">
           We can't yet confirm the merchant placed your order.{" "}
-          <Link to={`/cases/${purchaseId}`}>See what we know and your options</Link>.
+          <Link to={`/cases/${purchaseId}`}>
+            See what we know and your options
+          </Link>
+          .
         </p>
       )}
     </section>

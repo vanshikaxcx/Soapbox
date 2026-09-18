@@ -8,13 +8,18 @@ import { useFixtureAsyncState } from "../fixtures/useFixtureAsyncState";
 /** `/cases/:id` - read-only recovery view (WP-10 supplies the real case/guidance data). */
 export function CasePage() {
   const { id } = useParams<{ id: string }>();
-  const data = useMemo(() => ({ ...fixtureCase, caseId: id ?? fixtureCase.caseId }), [id]);
+  const data = useMemo(
+    () => ({ ...fixtureCase, caseId: id ?? fixtureCase.caseId }),
+    [id],
+  );
   const state = useFixtureAsyncState(data);
 
   return (
     <div className="pp-page">
       <h1>Case {id}</h1>
-      <AsyncStateView state={state}>{(recoveryCase) => <RecoveryCard {...recoveryCase} />}</AsyncStateView>
+      <AsyncStateView state={state}>
+        {(recoveryCase) => <RecoveryCard {...recoveryCase} />}
+      </AsyncStateView>
     </div>
   );
 }

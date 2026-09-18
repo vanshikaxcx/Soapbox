@@ -13,12 +13,16 @@ export interface CognitoConfig {
 
 export class MissingCognitoConfigError extends Error {
   constructor(missing: readonly string[]) {
-    super(`Missing Cognito configuration: ${missing.join(", ")}. See web/.env.example.`);
+    super(
+      `Missing Cognito configuration: ${missing.join(", ")}. See web/.env.example.`,
+    );
     this.name = "MissingCognitoConfigError";
   }
 }
 
-export function loadCognitoConfig(env: Record<string, string | undefined> = import.meta.env): CognitoConfig {
+export function loadCognitoConfig(
+  env: Record<string, string | undefined> = import.meta.env,
+): CognitoConfig {
   const domain = env["VITE_COGNITO_DOMAIN"];
   const clientId = env["VITE_COGNITO_CLIENT_ID"];
   const redirectUri = env["VITE_COGNITO_REDIRECT_URI"];

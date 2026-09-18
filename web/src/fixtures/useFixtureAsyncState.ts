@@ -12,7 +12,10 @@ export function useFixtureAsyncState<T>(data: T, delayMs = 300): AsyncState<T> {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting to loading when delayMs changes is this hook's own state, not derivable during render
     setState({ status: "loading" });
-    const timer = setTimeout(() => setState({ status: "success", data }), delayMs);
+    const timer = setTimeout(
+      () => setState({ status: "success", data }),
+      delayMs,
+    );
     return () => clearTimeout(timer);
   }, [data, delayMs]);
 

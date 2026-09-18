@@ -48,7 +48,11 @@ type HealthData = components["schemas"]["HealthSuccessResponse"]["data"];
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
-function joinUrl(baseUrl: string, path: string, query: GetOptions["query"]): string {
+function joinUrl(
+  baseUrl: string,
+  path: string,
+  query: GetOptions["query"],
+): string {
   const trimmed = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
   const url = new URL(`${trimmed}${path}`, "http://api.invalid");
   for (const [key, value] of Object.entries(query ?? {})) {
@@ -66,7 +70,9 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function readRequestId(envelope: Record<string, unknown> | null): string | undefined {
+function readRequestId(
+  envelope: Record<string, unknown> | null,
+): string | undefined {
   const requestId = envelope?.["request_id"];
   return typeof requestId === "string" ? requestId : undefined;
 }
@@ -76,12 +82,16 @@ function readRequestId(envelope: Record<string, unknown> | null): string | undef
  * does not match the contract is `malformed`, never silently treated as data -
  * the UI must not render a half-understood failure as success.
  */
-function failureToError(status: number, envelope: Record<string, unknown> | null): ApiError {
+function failureToError(
+  status: number,
+  envelope: Record<string, unknown> | null,
+): ApiError {
   const requestId = readRequestId(envelope);
   const body = asRecord(envelope?.["error"]);
   const rawCode = body?.["code"];
   const code = typeof rawCode === "string" ? rawCode : undefined;
-  const message = typeof body?.["message"] === "string" ? body["message"] : undefined;
+  const message =
+    typeof body?.["message"] === "string" ? body["message"] : undefined;
   const details = asRecord(body?.["details"]);
   return new ApiError({
     kind: kindForFailure(status, code),
@@ -96,7 +106,8 @@ function failureToError(status: number, envelope: Record<string, unknown> | null
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly transport: Transport;
-  private readonly accessToken: (() => string | null | Promise<string | null>) | undefined;
+  private readonly accessToken:
+    (() => string | null | Promise<string | null>) | undefined;
   private readonly timeoutMs: number;
   private readonly onTrace: ((trace: RequestTrace) => void) | undefined;
   private readonly now: () => number;
@@ -119,15 +130,22 @@ export class ApiClient {
     path: string,
     options: MutateOptions<TBody>,
   ): Promise<ApiResult<T>> {
-    const { idempotencyKey, body, expectedVersion, expectedRevision, ...rest } = options;
+    const { idempotencyKey, body, expectedVersion, expectedRevision, ...rest } =
+      options;
     const payload = asRecord(body) ?? (body === undefined ? {} : null);
     if (payload === null) {
-      throw new TypeError("Mutation body must be an object so version fields can be merged.");
+      throw new TypeError(
+        "Mutation body must be an object so version fields can be merged.",
+      );
     }
     const withVersions: Record<string, unknown> = {
       ...payload,
-      ...(expectedVersion === undefined ? {} : { expected_version: expectedVersion }),
-      ...(expectedRevision === undefined ? {} : { expected_revision: expectedRevision }),
+      ...(expectedVersion === undefined
+        ? {}
+        : { expected_version: expectedVersion }),
+      ...(expectedRevision === undefined
+        ? {}
+        : { expected_revision: expectedRevision }),
     };
     return this.send<T>(method, path, rest, withVersions, idempotencyKey);
   }
@@ -189,7 +207,11 @@ export class ApiClient {
       }).catch((cause: unknown) => {
         // A caller abort is a cancellation, not a failure the UI should report.
         if (!timedOut && options.signal?.aborted === true) {
-          throw new ApiError({ kind: "canceled", message: "Request canceled.", cause });
+          throw new ApiError({
+            kind: "canceled",
+            message: "Request canceled.",
+            cause,
+          });
         }
         throw cause;
       });
@@ -212,7 +234,11 @@ export class ApiClient {
       if (response.status >= 400) {
         throw failureToError(response.status, envelope);
       }
-      if (envelope === null || !("data" in envelope) || requestId === undefined) {
+      if (
+        envelope === null ||
+        !("data" in envelope) ||
+        requestId === undefined
+      ) {
         throw new ApiError({
           kind: "malformed",
           status: response.status,

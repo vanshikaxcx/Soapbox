@@ -15,7 +15,12 @@ function authenticatedStorage(): Storage {
   const storage = fakeStorage();
   storage.setItem(
     "proofpath.auth.tokens",
-    JSON.stringify({ accessToken: "a", idToken: "i", refreshToken: "r", expiresAt: Date.now() + 60_000 }),
+    JSON.stringify({
+      accessToken: "a",
+      idToken: "i",
+      refreshToken: "r",
+      expiresAt: Date.now() + 60_000,
+    }),
   );
   return storage;
 }
@@ -34,7 +39,11 @@ async function renderAtPath(path: string) {
   const { ApiProvider } = await import("../api/ApiProvider");
   return render(
     <AuthProvider
-      deps={{ config, storage: authenticatedStorage(), location: { search: "", pathname: path } }}
+      deps={{
+        config,
+        storage: authenticatedStorage(),
+        location: { search: "", pathname: path },
+      }}
     >
       <ApiProvider baseUrl="/api">
         <AppRouter />
@@ -55,7 +64,9 @@ describe("router", () => {
 
   it("renders the demo component harness at /demo, separate from shopper routes", async () => {
     await renderAtPath("/demo");
-    await waitFor(() => expect(screen.getByText("Component harness")).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByText("Component harness")).toBeTruthy(),
+    );
   });
 
   it("renders the case page at /cases/:id", async () => {

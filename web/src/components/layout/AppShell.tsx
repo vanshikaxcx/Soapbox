@@ -22,7 +22,11 @@ export function AppShell() {
         {status === "authenticated" && (
           <div className="pp-shell__account">
             {user?.email !== undefined && <span>{user.email}</span>}
-            <button type="button" className="pp-button pp-button--secondary" onClick={logout}>
+            <button
+              type="button"
+              className="pp-button pp-button--secondary"
+              onClick={logout}
+            >
               Sign out
             </button>
           </div>

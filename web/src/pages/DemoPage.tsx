@@ -34,9 +34,15 @@ function stateFor(status: PreviewStatus): AsyncState<typeof fixtureBaskets> {
         error: new ApiError({ kind: "stale_version", message: "Stale." }),
       };
     case "expired":
-      return { status: "expired", error: new ApiError({ kind: "expired", message: "Expired." }) };
+      return {
+        status: "expired",
+        error: new ApiError({ kind: "expired", message: "Expired." }),
+      };
     case "error":
-      return { status: "error", error: new ApiError({ kind: "server", message: "Server error." }) };
+      return {
+        status: "error",
+        error: new ApiError({ kind: "server", message: "Server error." }),
+      };
   }
 }
 
@@ -52,7 +58,10 @@ export function DemoPage() {
   return (
     <div className="pp-page">
       <h1>Component harness</h1>
-      <p>Preview every async state a shared card can render, without a live backend.</p>
+      <p>
+        Preview every async state a shared card can render, without a live
+        backend.
+      </p>
       <label htmlFor="pp-demo-state">Async state</label>
       <select
         id="pp-demo-state"
@@ -65,7 +74,10 @@ export function DemoPage() {
           </option>
         ))}
       </select>
-      <AsyncStateView state={stateFor(selected)} onRetry={() => setSelected("loading")}>
+      <AsyncStateView
+        state={stateFor(selected)}
+        onRetry={() => setSelected("loading")}
+      >
         {(baskets, partial) => (
           <>
             {partial && <p role="status">Partial coverage.</p>}

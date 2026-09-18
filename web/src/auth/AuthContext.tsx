@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 import {
   buildAuthorizeUrl,
@@ -17,7 +25,13 @@ import {
   storePendingAuthorization,
   type PkceCrypto,
 } from "./pkce";
-import { clearTokens, isExpired, readTokens, writeTokens, type StoredTokens } from "./tokens";
+import {
+  clearTokens,
+  isExpired,
+  readTokens,
+  writeTokens,
+  type StoredTokens,
+} from "./tokens";
 
 export type AuthStatus =
   | "loading"
@@ -68,11 +82,17 @@ function decodeIdToken(idToken: string): AuthUser | null {
     return null;
   }
   try {
-    const claims = JSON.parse(base64UrlDecode(payload)) as { sub?: unknown; email?: unknown };
+    const claims = JSON.parse(base64UrlDecode(payload)) as {
+      sub?: unknown;
+      email?: unknown;
+    };
     if (typeof claims.sub !== "string") {
       return null;
     }
-    return { sub: claims.sub, email: typeof claims.email === "string" ? claims.email : undefined };
+    return {
+      sub: claims.sub,
+      email: typeof claims.email === "string" ? claims.email : undefined,
+    };
   } catch {
     return null;
   }
@@ -88,7 +108,10 @@ export function AuthProvider({
   // Memoized: loadCognitoConfig() builds a fresh object every call, and an
   // unstable config identity would defeat downstream consumers (ApiProvider)
   // that key a memoized value off it.
-  const config = useMemo(() => deps.config ?? loadCognitoConfig(), [deps.config]);
+  const config = useMemo(
+    () => deps.config ?? loadCognitoConfig(),
+    [deps.config],
+  );
   const fetchImpl = deps.fetchImpl ?? fetch;
   const pkce = deps.pkce;
   const storage = deps.storage ?? sessionStorage;
@@ -144,7 +167,13 @@ export function AuthProvider({
           return;
         }
         try {
-          const tokens = await exchangeAuthorizationCode(config, code, pending.codeVerifier, fetchImpl, now);
+          const tokens = await exchangeAuthorizationCode(
+            config,
+            code,
+            pending.codeVerifier,
+            fetchImpl,
+            now,
+          );
           applyTokens(tokens);
           navigate(pending.returnTo);
         } catch {
@@ -169,7 +198,12 @@ export function AuthProvider({
         return;
       }
       try {
-        const refreshed = await refreshTokens(config, existing.refreshToken, fetchImpl, now);
+        const refreshed = await refreshTokens(
+          config,
+          existing.refreshToken,
+          fetchImpl,
+          now,
+        );
         applyTokens(refreshed);
       } catch {
         clearSession("expired");
@@ -194,7 +228,12 @@ export function AuthProvider({
       return null;
     }
     if (refreshInFlight.current === null) {
-      refreshInFlight.current = refreshTokens(config, current.refreshToken, fetchImpl, now)
+      refreshInFlight.current = refreshTokens(
+        config,
+        current.refreshToken,
+        fetchImpl,
+        now,
+      )
         .then((tokens) => {
           applyTokens(tokens);
           return tokens;
@@ -216,7 +255,11 @@ export function AuthProvider({
       const verifier = generateCodeVerifier(pkce);
       const state = generateState(pkce);
       storePendingAuthorization(
-        { codeVerifier: verifier, state, returnTo: returnTo ?? location.pathname },
+        {
+          codeVerifier: verifier,
+          state,
+          returnTo: returnTo ?? location.pathname,
+        },
         storage,
       );
       void generateCodeChallenge(verifier, pkce).then((codeChallenge) => {

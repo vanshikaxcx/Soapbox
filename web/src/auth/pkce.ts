@@ -9,7 +9,8 @@ export interface PkceCrypto {
 
 export const webCryptoPkce: PkceCrypto = {
   randomBytes: (length) => crypto.getRandomValues(new Uint8Array(length)),
-  sha256: (input) => crypto.subtle.digest("SHA-256", new TextEncoder().encode(input)),
+  sha256: (input) =>
+    crypto.subtle.digest("SHA-256", new TextEncoder().encode(input)),
 };
 
 function base64Url(bytes: Uint8Array | ArrayBuffer): string {
@@ -18,13 +19,19 @@ function base64Url(bytes: Uint8Array | ArrayBuffer): string {
   for (const byte of view) {
     binary += String.fromCharCode(byte);
   }
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 /** Inverse of `base64Url`: decodes a base64url string (e.g. a JWT segment) back to text. */
 export function base64UrlDecode(value: string): string {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+  const padded = normalized.padEnd(
+    normalized.length + ((4 - (normalized.length % 4)) % 4),
+    "=",
+  );
   return atob(padded);
 }
 
@@ -79,7 +86,11 @@ export function consumePendingAuthorization(
     ) {
       return null;
     }
-    return { codeVerifier: parsed.codeVerifier, state: parsed.state, returnTo: parsed.returnTo };
+    return {
+      codeVerifier: parsed.codeVerifier,
+      state: parsed.state,
+      returnTo: parsed.returnTo,
+    };
   } catch {
     return null;
   }

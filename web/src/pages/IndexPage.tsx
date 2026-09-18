@@ -11,7 +11,9 @@ import { fixtureConversation } from "../fixtures/routeFixtures";
  */
 export function IndexPage() {
   const client = useApiClient();
-  const { state, retry } = useAsyncResource((signal) => client.health({ signal }));
+  const { state, retry } = useAsyncResource((signal) =>
+    client.health({ signal }),
+  );
 
   return (
     <div className="pp-page">

@@ -10,7 +10,10 @@ import { useFixtureAsyncState } from "../fixtures/useFixtureAsyncState";
 export function PurchasePage() {
   const { id } = useParams<{ id: string }>();
   const data = useMemo(
-    () => ({ ...fixturePurchaseStatus, purchaseId: id ?? fixturePurchaseStatus.purchaseId }),
+    () => ({
+      ...fixturePurchaseStatus,
+      purchaseId: id ?? fixturePurchaseStatus.purchaseId,
+    }),
     [id],
   );
   const state = useFixtureAsyncState(data);
@@ -19,7 +22,9 @@ export function PurchasePage() {
     <div className="pp-page">
       <h1>Purchase {id}</h1>
       <SimulatedCheckoutNotice />
-      <AsyncStateView state={state}>{(status) => <PurchaseStatusCard {...status} />}</AsyncStateView>
+      <AsyncStateView state={state}>
+        {(status) => <PurchaseStatusCard {...status} />}
+      </AsyncStateView>
     </div>
   );
 }

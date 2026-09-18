@@ -36,7 +36,9 @@ export const realScheduler: Scheduler = {
   sleep: (ms, signal) =>
     new Promise((resolve, reject) => {
       if (signal?.aborted === true) {
-        reject(new ApiError({ kind: "canceled", message: "Polling canceled." }));
+        reject(
+          new ApiError({ kind: "canceled", message: "Polling canceled." }),
+        );
         return;
       }
       const timer = setTimeout(() => {
@@ -45,7 +47,9 @@ export const realScheduler: Scheduler = {
       }, ms);
       const onAbort = (): void => {
         clearTimeout(timer);
-        reject(new ApiError({ kind: "canceled", message: "Polling canceled." }));
+        reject(
+          new ApiError({ kind: "canceled", message: "Polling canceled." }),
+        );
       };
       signal?.addEventListener("abort", onAbort, { once: true });
     }),
@@ -79,7 +83,9 @@ export function documentVisibility(doc: Document = document): Visibility {
         };
         const onAbort = (): void => {
           cleanup();
-          reject(new ApiError({ kind: "canceled", message: "Polling canceled." }));
+          reject(
+            new ApiError({ kind: "canceled", message: "Polling canceled." }),
+          );
         };
         const cleanup = (): void => {
           doc.removeEventListener("visibilitychange", onChange);
@@ -116,7 +122,9 @@ export interface PollOptions<T> {
  * every other failure propagates, because polling a 404 or a 403 forever is
  * how a UI ends up lying about a purchase.
  */
-export async function pollUntilTerminal<T>(options: PollOptions<T>): Promise<PollOutcome<T>> {
+export async function pollUntilTerminal<T>(
+  options: PollOptions<T>,
+): Promise<PollOutcome<T>> {
   const policy = options.policy ?? DEFAULT_POLL_POLICY;
   const scheduler = options.scheduler ?? realScheduler;
   const visibility = options.visibility ?? alwaysVisible;
@@ -153,7 +161,9 @@ export async function pollUntilTerminal<T>(options: PollOptions<T>): Promise<Pol
     }
 
     const intervalMs =
-      attempts < policy.fastAttempts ? policy.fastIntervalMs : policy.slowIntervalMs;
+      attempts < policy.fastAttempts
+        ? policy.fastIntervalMs
+        : policy.slowIntervalMs;
     const waitStartedAt = scheduler.now();
     await scheduler.sleep(intervalMs, signal);
     if (visibility.isVisible()) {

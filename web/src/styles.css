@@ -39,7 +39,8 @@
   --pp-radius-pill: 999px;
   --pp-focus-ring: 3px solid #1a73e8;
   --pp-font-heading: "Rubik", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --pp-font-body: "Nunito Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --pp-font-body:
+    "Nunito Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   font-family: var(--pp-font-body);
 }
 
@@ -54,7 +55,10 @@ body {
   line-height: 1.55;
 }
 
-h1, h2, h3, h4 {
+h1,
+h2,
+h3,
+h4 {
   font-family: var(--pp-font-heading);
   font-weight: 600;
   line-height: 1.25;
@@ -258,7 +262,10 @@ main {
   border: 1px solid transparent;
   cursor: pointer;
   min-height: 44px;
-  transition: background-color 150ms ease, border-color 150ms ease, opacity 150ms ease;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    opacity 150ms ease;
 }
 
 .pp-button--primary {

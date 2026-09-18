@@ -65,10 +65,17 @@ describe("generateState", () => {
 describe("pending authorization store", () => {
   it("round-trips and is consumed exactly once", () => {
     const storage = fakeStorage();
-    storePendingAuthorization({ codeVerifier: "v", state: "s", returnTo: "/purchases/1" }, storage);
+    storePendingAuthorization(
+      { codeVerifier: "v", state: "s", returnTo: "/purchases/1" },
+      storage,
+    );
 
     const first = consumePendingAuthorization(storage);
-    expect(first).toEqual({ codeVerifier: "v", state: "s", returnTo: "/purchases/1" });
+    expect(first).toEqual({
+      codeVerifier: "v",
+      state: "s",
+      returnTo: "/purchases/1",
+    });
 
     const second = consumePendingAuthorization(storage);
     expect(second).toBeNull();

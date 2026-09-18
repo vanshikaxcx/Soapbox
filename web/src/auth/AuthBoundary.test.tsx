@@ -44,7 +44,12 @@ describe("AuthBoundary", () => {
     const storage = fakeStorage();
     storage.setItem(
       "proofpath.auth.tokens",
-      JSON.stringify({ accessToken: "a", idToken: "i", refreshToken: "r", expiresAt: now() + 60_000 }),
+      JSON.stringify({
+        accessToken: "a",
+        idToken: "i",
+        refreshToken: "r",
+        expiresAt: now() + 60_000,
+      }),
     );
 
     render(
@@ -65,6 +70,8 @@ describe("AuthBoundary", () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => expect(screen.getByText("Protected content")).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByText("Protected content")).toBeTruthy(),
+    );
   });
 });

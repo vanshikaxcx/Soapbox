@@ -18,9 +18,8 @@ export type AsyncState<T> =
   | { status: "expired"; error: ApiError }
   | { status: "error"; error: ApiError };
 
-export function isTerminalError(state: AsyncState<unknown>): state is Extract<
-  AsyncState<unknown>,
-  { status: "error" | "expired" }
-> {
+export function isTerminalError(
+  state: AsyncState<unknown>,
+): state is Extract<AsyncState<unknown>, { status: "error" | "expired" }> {
   return state.status === "error" || state.status === "expired";
 }

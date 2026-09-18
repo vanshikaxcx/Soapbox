@@ -19,7 +19,11 @@ import type {
 export const fixtureConversation: ConversationTurn[] = [
   { id: "t1", role: "assistant", text: "What would you like to buy today?" },
   { id: "t2", role: "shopper", text: "2 litres of milk and a loaf of bread." },
-  { id: "t3", role: "assistant", text: "Got it — comparing that across two nearby stores now." },
+  {
+    id: "t3",
+    role: "assistant",
+    text: "Got it — comparing that across two nearby stores now.",
+  },
 ];
 
 export const fixtureBaskets: BasketSummary[] = [
@@ -29,8 +33,20 @@ export const fixtureBaskets: BasketSummary[] = [
     confidence: "complete",
     totalPaise: 26_800,
     lines: [
-      { id: "l1", name: "Toned milk", brand: "Amul", quantity: "2 L", pricePaise: 11_000 },
-      { id: "l2", name: "Whole wheat bread", brand: undefined, quantity: "1 loaf", pricePaise: 4_500 },
+      {
+        id: "l1",
+        name: "Toned milk",
+        brand: "Amul",
+        quantity: "2 L",
+        pricePaise: 11_000,
+      },
+      {
+        id: "l2",
+        name: "Whole wheat bread",
+        brand: undefined,
+        quantity: "1 loaf",
+        pricePaise: 4_500,
+      },
     ],
   },
   {
@@ -39,8 +55,20 @@ export const fixtureBaskets: BasketSummary[] = [
     confidence: "estimated",
     totalPaise: 27_900,
     lines: [
-      { id: "l1", name: "Toned milk", brand: "Amul", quantity: "2 L", pricePaise: 11_400 },
-      { id: "l2", name: "Whole wheat bread", brand: "Britannia", quantity: "1 loaf", pricePaise: 5_200 },
+      {
+        id: "l1",
+        name: "Toned milk",
+        brand: "Amul",
+        quantity: "2 L",
+        pricePaise: 11_400,
+      },
+      {
+        id: "l2",
+        name: "Whole wheat bread",
+        brand: "Britannia",
+        quantity: "1 loaf",
+        pricePaise: 5_200,
+      },
     ],
   },
 ];
@@ -75,7 +103,12 @@ export const fixtureQuote: ExactQuote = {
   expiresAt: new Date(Date.now() + 120_000).toISOString(),
   lines: [
     { id: "l1", name: "Toned milk", quantity: "2 L", pricePaise: 11_000 },
-    { id: "l2", name: "Whole wheat bread", quantity: "1 loaf", pricePaise: 4_500 },
+    {
+      id: "l2",
+      name: "Whole wheat bread",
+      quantity: "1 loaf",
+      pricePaise: 4_500,
+    },
   ],
 };
 
@@ -92,7 +125,11 @@ export const fixtureCase: RecoveryCase = {
   openedAt: "2026-09-15T09:40:00Z",
   facts: [
     { label: "Payment", status: "known", detail: "Charged ₹298.00" },
-    { label: "Order", status: "unknown", detail: "No confirmation from merchant yet" },
+    {
+      label: "Order",
+      status: "unknown",
+      detail: "No confirmation from merchant yet",
+    },
     { label: "Refund", status: "unknown", detail: undefined },
   ],
 };
