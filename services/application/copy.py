@@ -90,9 +90,16 @@ def approve_label(total_paise: int, confidence: Confidence) -> str:
     return APPROVE_LABEL.format(amount=amount)
 
 
-def lower_bound_label(known_subtotal_paise: int) -> str:
-    """What to show when the total is unknown. Never a total, never zero."""
-    rupees, paise = divmod(known_subtotal_paise, 100)
+def lower_bound_label(floor_paise: int) -> str:
+    """What to show when the total is unknown. Never a total, never zero.
+
+    Takes ``Totals.floor``, not ``known_subtotal``. WP-02-A1 declassified
+    ``known_subtotal`` as a bound: it counts estimated charges at their *upper*
+    bound, so rendering "At least X" from it can promise a minimum the basket
+    then falls below. ``floor`` sums verified amounts alone and is the only
+    figure this sentence is true of.
+    """
+    rupees, paise = divmod(floor_paise, 100)
     return f"At least ₹{rupees}.{paise:02d}"
 
 
