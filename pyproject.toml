@@ -5,6 +5,11 @@ description = "ProofPath baseline Python toolchain"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "pydantic>=2.13.5,<3",
+  # services/agent: FastAPI transport and its ASGI server.
+  "fastapi>=0.115.6,<0.116",
+  "uvicorn[standard]>=0.32.1,<0.33",
+  # services/merchants: live-connector browser automation (Blinkit/Zepto).
+  "playwright>=1.49.1,<1.50",
 ]
 
 [build-system]
@@ -47,6 +52,14 @@ python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
 files = ["services", "tests"]
+
+# services.application.ports.MerchantPort is WP-08's, not yet built (see
+# services/merchants/p3_merchant_port_adapter.py's module docstring). The
+# import is deliberate and only unused (noqa: F401) today as a structural
+# type-check target for when WP-08 lands; remove this override then.
+[[tool.mypy.overrides]]
+module = ["services.merchants.p3_merchant_port_adapter"]
+disable_error_code = ["attr-defined"]
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
