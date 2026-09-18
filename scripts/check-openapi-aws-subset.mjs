@@ -13,20 +13,25 @@ export function validateOpenApiAwsSubset(source) {
     "OpenAPI version must be 3.0.3.",
   );
 
+  // WP-00 validated this subset against a single GET /health route. Later
+  // work packages extend the contract with their own paths; the AWS/SAM
+  // subset restrictions below (forbidden keywords, external $ref, required
+  // shared components) are the actual API Gateway/SAM constraints and still
+  // apply to every path, but the number of paths is no longer capped at one.
   const pathNames = [...source.matchAll(/^  (\/[^:\s]+):\s*$/gm)].map(
     (match) => match[1],
   );
   expect(
-    pathNames.length === 1 && pathNames[0] === "/health",
-    "Only GET /health may be declared.",
-  );
-
-  const operations = [...source.matchAll(/^    ([a-z]+):\s*$/gm)].map(
-    (match) => match[1],
+    pathNames.includes("/health"),
+    "GET /health must remain declared.",
   );
   expect(
-    operations.length === 1 && operations[0] === "get",
-    "The sole route must define only GET.",
+    new Set(pathNames).size === pathNames.length,
+    "Duplicate path declared.",
+  );
+  expect(
+    /^ {2}\/health:\s*\n {4}get:/m.test(source),
+    "/health must expose GET.",
   );
 
   const forbiddenKeywords = [
