@@ -11,12 +11,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from services.application.fakes import SequentialIds
-from services.domain.basket import BasketLine
-from services.domain.errors import DomainError
-from services.domain.ids import Mode
-from services.domain.intent import Flexibility, Intent, Item
-from services.domain.money import BudgetCheck
-from services.domain.units import Quantity, Unit
 
 from services.agent.compare import (
     ComparisonOutcome,
@@ -25,6 +19,12 @@ from services.agent.compare import (
     run_comparison,
     to_domain_observation,
 )
+from services.domain.basket import BasketLine
+from services.domain.errors import DomainError
+from services.domain.ids import Mode
+from services.domain.intent import Flexibility, Intent, Item
+from services.domain.money import BudgetCheck
+from services.domain.units import Quantity, Unit
 from services.merchants.base import Merchant
 from services.merchants.models import ExtractionStatus as RawExtractionStatus
 from services.merchants.models import FeeAssessment as RawFeeAssessment

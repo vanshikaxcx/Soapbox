@@ -30,11 +30,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from services.application.ports import IdFactory
 from services.domain.ids import Record
 from services.domain.intent import MAX_ITEMS, Flexibility, Item
 from services.domain.units import Quantity, Unit, base_units_per, dimension_of
-
-from services.application.ports import IdFactory
 from services.extraction.base import ExtractorUnavailable
 from services.extraction.models import CandidateItem, ExtractionResult, UnresolvedCandidate
 from services.extraction.registry import build_extractor
