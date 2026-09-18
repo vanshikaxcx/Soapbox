@@ -137,6 +137,27 @@ def test_an_estimated_total_is_approvable_as_a_ceiling() -> None:
     assert can_build_quote(preparation(), ESTIMATED_TOTALS, NOW) is None
 
 
+def test_an_estimated_line_blocks_the_quote_even_though_a_fee_would_not() -> None:
+    """A ceiling on a fee is expressible; a ceiling on a line is not.
+
+    ``QuoteLine.line_total`` is a plain ``Money`` with nowhere to say "at most",
+    and ``total_confidence`` reads only the charges -- so an estimated line would
+    be rendered as an exact item price inside a total reported as verified. That
+    is the precise mistake WP-02-A1 exists to prevent, so it is refused here
+    rather than shown.
+    """
+    totals = compute_totals(
+        [Amount.known(Money.paise(59_000), Confidence.ESTIMATED)],
+        [Charge.known_charge(ChargeKind.DELIVERY, Money.paise(1_000))],
+    )
+    assert totals.confidence is Confidence.ESTIMATED
+    assert totals.estimated_lines == 1
+
+    result = can_build_quote(preparation(), totals, NOW)
+    assert isinstance(result, QuoteNotConstructible)
+    assert result.reason == "estimated_line"
+
+
 # -- exposure --------------------------------------------------------------
 
 

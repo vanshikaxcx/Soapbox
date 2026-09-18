@@ -180,6 +180,15 @@ def can_build_quote(
             charge_kinds=tuple(str(k) for k in totals.unknown_charges),
         )
 
+    if totals.estimated_lines:
+        # A ceiling on a *fee* is expressible: the charge carries its own
+        # confidence and the control says "up to". A ceiling on a *line* is not
+        # -- QuoteLine.line_total is a plain Money, so the quote would show an
+        # estimated item price as though it were exact, and total_confidence
+        # (which reads the charges) would report the whole total as verified.
+        # Refuse rather than render a ceiling as a price.
+        return QuoteNotConstructible(reason="estimated_line", charge_kinds=())
+
     # An ESTIMATED total is approvable, as a ceiling (WP-02-A1 §5). Every
     # estimated charge is carried at its upper bound, so "up to X" is a true
     # statement about the basket and the control says exactly that. The live
@@ -297,9 +306,11 @@ class CheckoutQuote(Timestamped):
         """Whether ``total`` is an exact price or a ceiling.
 
         Derived from the charges rather than stored, so it cannot contradict
-        them. Lines are exact by construction -- a quote cannot be built while a
-        line is unpriced -- so the charges decide. A quote is never UNKNOWN:
-        ``can_build_quote`` refuses that case before a quote exists.
+        them. Reading the charges alone is only sound because ``can_build_quote``
+        refuses a total carrying an unpriced *or* estimated line: a ``QuoteLine``
+        holds a plain ``Money`` and has nowhere to record that it is a ceiling,
+        so a quote's lines are exact by enforcement, not by assumption. A quote
+        is never UNKNOWN for the same reason.
         """
         return worst([c.confidence for c in self.charges])
 

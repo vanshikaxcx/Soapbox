@@ -203,6 +203,11 @@ class Totals(Record):
     confidence: Confidence
     unknown_charges: tuple[ChargeKind, ...]
     unpriced_lines: int = Field(default=0, ge=0)
+    #: Lines carried at an estimate rather than an exact price. A quote cannot
+    #: express one -- ``QuoteLine.line_total`` is a plain ``Money`` with nowhere
+    #: to record that it is a ceiling -- so ``can_build_quote`` refuses them and
+    #: ``CheckoutQuote.total_confidence`` may read the charges alone.
+    estimated_lines: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def _total_absent_iff_unknown(self) -> Totals:
@@ -256,6 +261,7 @@ def compute_totals(lines: Sequence[Amount], charges: Sequence[Charge]) -> Totals
 
     unknown_charges = tuple(c.kind for c in charges if c.confidence is Confidence.UNKNOWN)
     unpriced_lines = sum(1 for a in lines if a.confidence is Confidence.UNKNOWN)
+    estimated_lines = sum(1 for a in lines if a.confidence is Confidence.ESTIMATED)
 
     if confidence is Confidence.UNKNOWN:
         # An unpriced line is reported as exactly that. Folding it into a phantom
@@ -269,6 +275,7 @@ def compute_totals(lines: Sequence[Amount], charges: Sequence[Charge]) -> Totals
             confidence=Confidence.UNKNOWN,
             unknown_charges=unknown_charges,
             unpriced_lines=unpriced_lines,
+            estimated_lines=estimated_lines,
         )
 
     return Totals(
@@ -278,6 +285,7 @@ def compute_totals(lines: Sequence[Amount], charges: Sequence[Charge]) -> Totals
         confidence=confidence,
         unknown_charges=(),
         unpriced_lines=0,
+        estimated_lines=estimated_lines,
     )
 
 
