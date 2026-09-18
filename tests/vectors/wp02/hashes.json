@@ -1,0 +1,90 @@
+{
+  "scheme": "pp-canon-v1",
+  "note": "Regenerating this file is a breaking contract change. See WP-02.",
+  "vectors": [
+    {
+      "name": "quote: single line, one known delivery charge",
+      "kind": "digest",
+      "tag": "proofpath.quote.v1",
+      "canonical_json": "{\"charges\":[{\"amount_paise\":2000,\"confidence\":\"verified\",\"kind\":\"delivery\"}],\"currency\":\"INR\",\"delivery\":\"standard\",\"expires_at\":\"2026-09-15T12:02:00.000Z\",\"lines\":[{\"dimension\":\"mass\",\"line_total_paise\":60000,\"name\":\"Basmati rice 1kg\",\"quantity_base\":5000,\"sku\":\"sku-00001\",\"substituted\":false,\"unit_price_paise\":12000}],\"mode\":\"live\",\"owner_id\":\"owner-0001\",\"purchase_id\":\"purchase-0001\",\"purchase_version\":1,\"quote_id\":\"quote-00000001\",\"quote_version\":1,\"seller_id\":\"demo-seller-01\",\"source_merchant_id\":\"merchant-a\"}",
+      "digest": "c77885a55120ca831c6dea29e8cffc1230f18702b1e2d32c1554759e4b0fcce8"
+    },
+    {
+      "name": "quote: identical to the first but in fixture mode",
+      "kind": "digest",
+      "tag": "proofpath.quote.v1",
+      "canonical_json": "{\"charges\":[{\"amount_paise\":2000,\"confidence\":\"verified\",\"kind\":\"delivery\"}],\"currency\":\"INR\",\"delivery\":\"standard\",\"expires_at\":\"2026-09-15T12:02:00.000Z\",\"lines\":[{\"dimension\":\"mass\",\"line_total_paise\":60000,\"name\":\"Basmati rice 1kg\",\"quantity_base\":5000,\"sku\":\"sku-00001\",\"substituted\":false,\"unit_price_paise\":12000}],\"mode\":\"fixture\",\"owner_id\":\"owner-0001\",\"purchase_id\":\"purchase-0001\",\"purchase_version\":1,\"quote_id\":\"quote-00000001\",\"quote_version\":1,\"seller_id\":\"demo-seller-01\",\"source_merchant_id\":\"merchant-a\"}",
+      "digest": "955273e6f863f79514b5583ac90042225a9bc01f9b1798ccea81a3750bbd1c07"
+    },
+    {
+      "name": "diff: empty change list",
+      "kind": "digest",
+      "tag": "proofpath.diff.v1",
+      "canonical_json": "[]",
+      "digest": "3b951f62deaac080c08f9946b40b1f392d2bb0113bcfb33a476dea5e374704d6"
+    },
+    {
+      "name": "diff: one price change",
+      "kind": "digest",
+      "tag": "proofpath.diff.v1",
+      "canonical_json": "[{\"after\":\"12500\",\"before\":\"12000\",\"kind\":\"price\",\"target\":\"sku-00001\"}]",
+      "digest": "3f11158b7b8dea25163b5225592c3f5acc8cb5b8601a65e7bff529fffddd5017"
+    },
+    {
+      "name": "lines: two lines, order significant",
+      "kind": "digest",
+      "tag": "proofpath.lines.v1",
+      "canonical_json": "[{\"quantity_base\":5000,\"sku\":\"sku-00001\"},{\"quantity_base\":2000,\"sku\":\"sku-00002\"}]",
+      "digest": "8cbc53d731f0209153f8d5f34c51276c71cf289365e82a39f5e74d2170c86e1c"
+    },
+    {
+      "name": "idempotency: approve request",
+      "kind": "digest",
+      "tag": "proofpath.idem.v1",
+      "canonical_json": "{\"body\":{\"expected_purchase_version\":1,\"quote_hash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"quote_id\":\"quote-00000001\",\"quote_version\":1},\"method\":\"POST\",\"owner_id\":\"owner-0001\",\"path_params\":{\"id\":\"purchase-0001\"},\"path_template\":\"/purchases/{id}/approve\"}",
+      "digest": "a40ab8c472ee0187c2fdfbd1449c53daafc80f5705ba8cb7876a16250793ec14"
+    },
+    {
+      "name": "canonical: explicit null is not an omitted key",
+      "kind": "digest",
+      "tag": "proofpath.diff.v1",
+      "canonical_json": "{\"delivery_charge\":null}",
+      "digest": "96d5df83132f36202cca3d5b0c5bdd6724f510d1dae6a3f5db9898026af1a0d2"
+    },
+    {
+      "name": "canonical: unicode normalises to NFC",
+      "kind": "digest",
+      "tag": "proofpath.diff.v1",
+      "canonical_json": "{\"name\":\"café\"}",
+      "digest": "541fd2530b93934a939f18e46b2cfe2aac977bd39527faa536a8a822db0de237"
+    },
+    {
+      "name": "approval id from a quote",
+      "kind": "approval_id",
+      "inputs": {
+        "quote_id": "quote-00000001",
+        "quote_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "quote_version": 1
+      },
+      "digest": "a47153e703d3e90967d818b13aa00a38e0a08cc2096c45fedff3bb47b7fea0ce"
+    },
+    {
+      "name": "payment key for purchase-0001",
+      "kind": "payment_key",
+      "inputs": {
+        "purchase_id": "purchase-0001",
+        "approval_id": "approval-000000001"
+      },
+      "digest": "bf23912a4db76fedb82dac6203287c7803fe797b5c454d9e9d8ff11781ebc26f"
+    },
+    {
+      "name": "order key for attempt-0001",
+      "kind": "order_key",
+      "inputs": {
+        "purchase_id": "purchase-0001",
+        "attempt_id": "attempt-0001"
+      },
+      "digest": "510ca581af799e82a5aa16492f13112a00e1831f833e060a29b2397fe5dedd96"
+    }
+  ]
+}
