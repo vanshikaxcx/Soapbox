@@ -46,9 +46,7 @@ def a_session(
 
 
 def test_a_session_is_current_against_the_context_it_captured() -> None:
-    assert binding_is_current(
-        a_session(), conversation_version=3, active_question_id="question-01"
-    )
+    assert binding_is_current(a_session(), conversation_version=3, active_question_id="question-01")
 
 
 def test_a_session_is_stale_once_the_conversation_moves_on() -> None:
@@ -102,8 +100,6 @@ def test_an_expired_session_may_not_submit() -> None:
 # -- expiry boundary matches quotes and preparations -----------------------
 
 
-@pytest.mark.parametrize(
-    ("offset", "expired"), [(-1, False), (0, True), (1, True)]
-)
+@pytest.mark.parametrize(("offset", "expired"), [(-1, False), (0, True), (1, True)])
 def test_expiry_is_inclusive_at_the_boundary(offset: int, expired: bool) -> None:
     assert is_expired(NOW, NOW + timedelta(seconds=offset)) is expired

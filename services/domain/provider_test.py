@@ -195,9 +195,7 @@ def test_once_terminal_a_payment_never_changes(
     settled: PaymentState | None = None
 
     for state, offset in zip(reports, offsets, strict=False):
-        result = apply_payment_facts(
-            current, payment(state, at=T0 + timedelta(seconds=offset))
-        )
+        result = apply_payment_facts(current, payment(state, at=T0 + timedelta(seconds=offset)))
         if isinstance(result, Applied):
             if settled is not None:
                 # Already terminal: the only permitted outcome is the same state.

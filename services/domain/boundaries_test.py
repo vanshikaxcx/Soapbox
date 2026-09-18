@@ -116,9 +116,7 @@ def test_no_module_imports_a_sibling_service(path: pathlib.Path) -> None:
             for alias in node.names:
                 if alias.name.startswith("services."):
                     module = alias.name
-        if module and module.startswith("services.") and not module.startswith(
-            "services.domain"
-        ):
+        if module and module.startswith("services.") and not module.startswith("services.domain"):
             pytest.fail(f"{path.name} imports {module}; domain sits below every other package")
 
 

@@ -215,9 +215,7 @@ class Totals(Record):
         if unknown != (self.total is None):
             raise ValueError("total must be absent exactly when confidence is UNKNOWN")
         if unknown and not (self.unknown_charges or self.unpriced_lines):
-            raise ValueError(
-                "an unknown total must name an unknown charge or an unpriced line"
-            )
+            raise ValueError("an unknown total must name an unknown charge or an unpriced line")
         if not unknown and (self.unknown_charges or self.unpriced_lines):
             raise ValueError("a known total cannot carry unknowns")
         if self.floor.amount_paise > self.known_subtotal.amount_paise:

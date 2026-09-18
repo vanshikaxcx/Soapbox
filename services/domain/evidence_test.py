@@ -65,7 +65,7 @@ def test_a_new_case_is_open() -> None:
 
 
 def test_missing_facts_are_named_rather_than_left_absent() -> None:
-    """"We don't know whether an order exists" is the thing to say out loud."""
+    """ "We don't know whether an order exists" is the thing to say out loud."""
     case = a_case((MissingFact.ORDER_EXISTENCE,))
     assert case.has_gaps is True
     assert MissingFact.ORDER_EXISTENCE in case.missing_facts

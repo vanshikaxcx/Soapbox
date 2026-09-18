@@ -72,9 +72,7 @@ def test_preparation_freshness_boundary_is_exactly_120_seconds(
     ("elapsed", "expected_live"),
     [(0, True), (119, True), (120, False), (121, False)],
 )
-def test_quote_lifetime_boundary_is_exactly_120_seconds(
-    elapsed: int, expected_live: bool
-) -> None:
+def test_quote_lifetime_boundary_is_exactly_120_seconds(elapsed: int, expected_live: bool) -> None:
     window = quote_window(NOW)
     result = check_quote_live("quote-001", window, NOW + timedelta(seconds=elapsed))
     assert (result is None) is expected_live
@@ -184,9 +182,7 @@ def test_a_definitively_failed_payment_is_not_exposure() -> None:
     assert has_unresolved_exposure(attempt) is False
 
 
-@pytest.mark.parametrize(
-    "dispatch", [DispatchState.READY, DispatchState.EXPIRED_UNSENT]
-)
+@pytest.mark.parametrize("dispatch", [DispatchState.READY, DispatchState.EXPIRED_UNSENT])
 def test_no_provider_call_means_no_exposure(dispatch: DispatchState) -> None:
     attempt = AttemptSnapshot(
         attempt_id="attempt-01", dispatch=dispatch, payment=PaymentState.CLAIMED

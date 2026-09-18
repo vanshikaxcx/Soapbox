@@ -85,6 +85,7 @@ class Diff(Record):
 def build_diff(changes: Sequence[Change]) -> Diff:
     return Diff(changes=tuple(changes))
 
+
 #: Defaults from SPEC section 6. Both are parameters, both are checked against an
 #: injected server clock, and both are always shown to the shopper.
 PREPARATION_FRESHNESS_SECONDS = 120
@@ -520,14 +521,15 @@ def build_attempt_and_lookup(
     safe: calling it twice for the same approval produces identical records
     rather than a second attempt.
     """
-    key = build_payment_key(
-        purchase_id=purchase.purchase_id, approval_id=approval.approval_id
-    )
+    key = build_payment_key(purchase_id=purchase.purchase_id, approval_id=approval.approval_id)
     # The hash of the PAYMENT payload, not of the approve request. Checkout
     # rebuilds the payload and must reproduce this exactly before sending.
     payload_hash = build_payment_request_hash(
-        payment_key=key, quote_hash=quote.quote_hash, seller_id=quote.demo_seller_id,
-        amount_paise=quote.total.amount_paise, currency=str(quote.currency),
+        payment_key=key,
+        quote_hash=quote.quote_hash,
+        seller_id=quote.demo_seller_id,
+        amount_paise=quote.total.amount_paise,
+        currency=str(quote.currency),
         expires_at=quote.expires_at,
     )
     attempt = Attempt(

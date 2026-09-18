@@ -73,9 +73,7 @@ def test_approval_id_takes_no_clock_random_or_counter_argument() -> None:
 
 def test_payment_key_is_identical_across_a_hundred_retries() -> None:
     consent = approval_id(quote_id="quote-0001", quote_hash="a" * 64, quote_version=1)
-    keys = {
-        payment_key(purchase_id="purchase-001", approval_id=consent) for _ in range(100)
-    }
+    keys = {payment_key(purchase_id="purchase-001", approval_id=consent) for _ in range(100)}
     assert len(keys) == 1
 
 

@@ -116,9 +116,7 @@ def test_two_estimated_baskets_do_not_compare_when_their_bands_overlap() -> None
 
 def test_an_estimate_can_beat_a_verified_total_it_sits_entirely_below() -> None:
     """11,000 exactly, against a basket that cannot exceed 10,500."""
-    assert compare_baskets(verified(11_000), estimated(10_000, 500)) is (
-        Comparison.RIGHT_CHEAPER
-    )
+    assert compare_baskets(verified(11_000), estimated(10_000, 500)) is (Comparison.RIGHT_CHEAPER)
 
 
 # -- modes never mix -------------------------------------------------------
@@ -159,7 +157,7 @@ def test_cheapest_can_name_an_estimate_that_sits_below_an_unknown_floor() -> Non
 
 
 def test_cheapest_returns_none_when_nothing_can_be_proven() -> None:
-    """"We cannot honestly call any of these cheapest" is still a real answer."""
+    """ "We cannot honestly call any of these cheapest" is still a real answer."""
     # Overlapping bands: the unknown basket's floor sits under the estimate's
     # ceiling, so neither can be ruled out.
     assert cheapest([estimated(9_000, 1_500), unknown(10_000)]) is None
@@ -198,9 +196,7 @@ def test_comparison_is_antisymmetric(left: int, right: int) -> None:
     st.integers(min_value=0, max_value=10**7),
     st.integers(min_value=0, max_value=10**6),
 )
-def test_a_win_is_always_backed_by_a_disjoint_band(
-    exact: int, other: int, fee: int
-) -> None:
+def test_a_win_is_always_backed_by_a_disjoint_band(exact: int, other: int, fee: int) -> None:
     """The soundness property that replaces the pre-A1 "inexact never wins" rule.
 
     A1 lets an estimate win, so the invariant worth defending is no longer *who*
@@ -224,6 +220,4 @@ def test_a_win_is_always_backed_by_a_disjoint_band(
 )
 def test_an_unknown_basket_never_wins(paise: int, fee: int) -> None:
     """No ceiling means no proof, at any price. This survives A1 unchanged."""
-    assert compare_baskets(unknown(paise), estimated(10**7, fee)) is not (
-        Comparison.LEFT_CHEAPER
-    )
+    assert compare_baskets(unknown(paise), estimated(10**7, fee)) is not (Comparison.LEFT_CHEAPER)

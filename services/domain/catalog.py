@@ -93,9 +93,7 @@ def satisfies_hard_attributes(
     for name, required in item.hard_attributes.items():
         observed = observation.attributes.get(name)
         if observed is None or observed == "" or observed != required:
-            return HardAttributeUnsatisfied(
-                attribute=name, required=required, observed=observed
-            )
+            return HardAttributeUnsatisfied(attribute=name, required=required, observed=observed)
     return None
 
 

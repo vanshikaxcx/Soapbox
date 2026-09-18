@@ -138,13 +138,11 @@ def test_an_offset_aware_time_is_normalised_so_comparisons_are_safe() -> None:
     from datetime import timezone
 
     ist = timezone(timedelta(hours=5, minutes=30))
-    current = Current(state=OrderState.PENDING, observed_at=datetime(
-        2026, 9, 15, 17, 30, 0, tzinfo=ist
-    ))
-    assert current.observed_at == NOW
-    result = apply_order_facts(
-        current, OrderFacts(state=OrderState.CONFIRMED, observed_at=LATER)
+    current = Current(
+        state=OrderState.PENDING, observed_at=datetime(2026, 9, 15, 17, 30, 0, tzinfo=ist)
     )
+    assert current.observed_at == NOW
+    result = apply_order_facts(current, OrderFacts(state=OrderState.CONFIRMED, observed_at=LATER))
     assert isinstance(result, Applied)
 
 

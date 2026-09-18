@@ -42,9 +42,7 @@ def approval_id(*, quote_id: str, quote_hash: str, quote_version: int) -> str:
 
 def payment_key(*, purchase_id: str, approval_id: str) -> str:
     """One approval, one payment key, forever."""
-    return digest(
-        TAG_PAYMENT_KEY, {"purchase_id": purchase_id, "approval_id": approval_id}
-    )
+    return digest(TAG_PAYMENT_KEY, {"purchase_id": purchase_id, "approval_id": approval_id})
 
 
 def payment_request_hash(

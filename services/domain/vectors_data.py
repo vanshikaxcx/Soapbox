@@ -37,9 +37,7 @@ CASES: dict[str, list[dict[str, Any]]] = {
                         "substituted": False,
                     }
                 ],
-                "charges": [
-                    {"kind": "delivery", "confidence": "verified", "amount_paise": 2000}
-                ],
+                "charges": [{"kind": "delivery", "confidence": "verified", "amount_paise": 2000}],
                 "currency": "INR",
                 "delivery": "standard",
                 "expires_at": "2026-09-15T12:02:00.000Z",
@@ -68,9 +66,7 @@ CASES: dict[str, list[dict[str, Any]]] = {
                         "substituted": False,
                     }
                 ],
-                "charges": [
-                    {"kind": "delivery", "confidence": "verified", "amount_paise": 2000}
-                ],
+                "charges": [{"kind": "delivery", "confidence": "verified", "amount_paise": 2000}],
                 "currency": "INR",
                 "delivery": "standard",
                 "expires_at": "2026-09-15T12:02:00.000Z",

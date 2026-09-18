@@ -142,9 +142,7 @@ def _apply(  # noqa: PLR0911
     # Rule 1 and 2: a terminal state is only ever re-confirmed, never revised.
     if current_terminal:
         if incoming_state == current.state:
-            return Applied(
-                state=current.state, observed_at=incoming_observed_at, changed=False
-            )
+            return Applied(state=current.state, observed_at=incoming_observed_at, changed=False)
         if incoming_terminal:
             return ContradictoryProviderFact(
                 machine=machine,
@@ -168,8 +166,7 @@ def _apply(  # noqa: PLR0911
     if not isinstance(result, (PaymentState, OrderState, RefundState)):
         # Unreachable: the tables only ever produce these. Stated so the type
         # checker agrees, rather than left as an assumption.
-        return IllegalTransition(machine=machine, current=str(current.state),
-                                 event=str(event))
+        return IllegalTransition(machine=machine, current=str(current.state), event=str(event))
     return Applied(
         state=result,
         observed_at=incoming_observed_at,

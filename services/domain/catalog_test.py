@@ -84,7 +84,7 @@ def test_a_matching_attribute_satisfies() -> None:
 
 
 def test_a_missing_attribute_never_satisfies() -> None:
-    """"We don't know whether this is basmati" is not "yes"."""
+    """ "We don't know whether this is basmati" is not "yes"."""
     item = an_item(attributes={"variety": "basmati"})
     result = satisfies_hard_attributes(item, an_observation(attributes={}))
     assert isinstance(result, HardAttributeUnsatisfied)
@@ -138,8 +138,9 @@ def test_a_brand_change_is_recorded_when_permitted(flexibility: Flexibility) -> 
 
 def test_pack_flexibility_alone_does_not_permit_a_brand_change() -> None:
     item = an_item(attributes={"brand": "India Gate"}, flexibility=Flexibility.PACK_FLEXIBLE)
-    assert isinstance(check_substitution(item, an_observation(brand="Daawat")),
-                      SubstitutionNotPermitted)
+    assert isinstance(
+        check_substitution(item, an_observation(brand="Daawat")), SubstitutionNotPermitted
+    )
 
 
 def test_no_substitution_is_recorded_when_the_brand_matches() -> None:
@@ -212,9 +213,9 @@ def test_an_overbuy_beyond_the_limit_is_refused() -> None:
 @pytest.mark.parametrize(
     ("required", "pack", "allowed"),
     [
-        (1000, 1500, True),   # exactly 1.5x
+        (1000, 1500, True),  # exactly 1.5x
         (1000, 1501, False),  # just over
-        (1000, 1499, True),   # just under
+        (1000, 1499, True),  # just under
     ],
 )
 def test_the_overbuy_boundary_is_exactly_one_and_a_half(

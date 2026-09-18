@@ -240,9 +240,7 @@ def test_a_quote_may_carry_an_estimated_charge_and_reports_it_as_a_ceiling() -> 
     carries an estimate must report it rather than look exact.
     """
     quote = a_quote(
-        charges=(
-            Charge.known_charge(ChargeKind.SURGE, Money.paise(2_000), Confidence.ESTIMATED),
-        )
+        charges=(Charge.known_charge(ChargeKind.SURGE, Money.paise(2_000), Confidence.ESTIMATED),)
     )
     assert quote.total_confidence is Confidence.ESTIMATED
 
@@ -366,16 +364,12 @@ def test_a_lookup_matches_only_the_terms_that_were_approved() -> None:
         approval=an_approval(),
         quote=quote,
     )
-    assert lookup.matches(
-        seller_id="demo-seller-01", amount=quote.total, currency=Currency.INR
-    )
+    assert lookup.matches(seller_id="demo-seller-01", amount=quote.total, currency=Currency.INR)
     # A callback claiming a different amount must never become truth.
     assert not lookup.matches(
         seller_id="demo-seller-01", amount=Money.paise(1), currency=Currency.INR
     )
-    assert not lookup.matches(
-        seller_id="someone-else", amount=quote.total, currency=Currency.INR
-    )
+    assert not lookup.matches(seller_id="someone-else", amount=quote.total, currency=Currency.INR)
 
 
 # -- purchase --------------------------------------------------------------
@@ -393,9 +387,7 @@ def test_payment_success_alone_is_not_resolution() -> None:
     paid_no_order = a_purchase(payment=PaymentState.SUCCEEDED)
     assert paid_no_order.is_resolved is False
 
-    paid_and_ordered = a_purchase(
-        payment=PaymentState.SUCCEEDED, order=OrderState.CONFIRMED
-    )
+    paid_and_ordered = a_purchase(payment=PaymentState.SUCCEEDED, order=OrderState.CONFIRMED)
     assert paid_and_ordered.is_resolved is True
 
 

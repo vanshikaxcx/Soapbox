@@ -66,20 +66,32 @@ def build() -> dict[str, object]:
 
     for case in CASES["approval_ids"]:
         vectors.append(
-            {"name": case["name"], "kind": "approval_id", "inputs": case["inputs"],
-             "digest": approval_id(**case["inputs"])}
+            {
+                "name": case["name"],
+                "kind": "approval_id",
+                "inputs": case["inputs"],
+                "digest": approval_id(**case["inputs"]),
+            }
         )
 
     for case in CASES["payment_keys"]:
         vectors.append(
-            {"name": case["name"], "kind": "payment_key", "inputs": case["inputs"],
-             "digest": payment_key(**case["inputs"])}
+            {
+                "name": case["name"],
+                "kind": "payment_key",
+                "inputs": case["inputs"],
+                "digest": payment_key(**case["inputs"]),
+            }
         )
 
     for case in CASES["order_keys"]:
         vectors.append(
-            {"name": case["name"], "kind": "order_key", "inputs": case["inputs"],
-             "digest": order_key(**case["inputs"])}
+            {
+                "name": case["name"],
+                "kind": "order_key",
+                "inputs": case["inputs"],
+                "digest": order_key(**case["inputs"]),
+            }
         )
 
     return {

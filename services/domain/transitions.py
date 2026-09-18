@@ -253,9 +253,7 @@ CASE_TABLE: Final[dict[tuple[CaseState, CaseEvent], CaseState]] = {
 # -- machine registry ------------------------------------------------------
 
 #: name -> (state enum, event enum, table, terminal states)
-MACHINES: Final[
-    dict[str, tuple[type[StrEnum], type[StrEnum], dict[Any, Any], frozenset[Any]]]
-] = {
+MACHINES: Final[dict[str, tuple[type[StrEnum], type[StrEnum], dict[Any, Any], frozenset[Any]]]] = {
     "payment": (
         PaymentState,
         PaymentEvent,
@@ -284,9 +282,7 @@ MACHINES: Final[
         ApprovalState,
         ApprovalEvent,
         APPROVAL_TABLE,
-        frozenset(
-            {ApprovalState.CONSUMED, ApprovalState.EXPIRED, ApprovalState.CANCELLED}
-        ),
+        frozenset({ApprovalState.CONSUMED, ApprovalState.EXPIRED, ApprovalState.CANCELLED}),
     ),
     "claim": (ClaimState, ClaimEvent, CLAIM_TABLE, frozenset()),
     "job": (JobState, JobEvent, JOB_TABLE, frozenset({JobState.SUCCEEDED})),
@@ -335,8 +331,7 @@ def _check(machine: str, current: StrEnum, event: StrEnum | None = None) -> None
         )
     if event is not None and type(event) is not events:
         raise StateMachineMisuse(
-            f"{machine} machine given {type(event).__name__}.{event}; "
-            f"expected a {events.__name__}"
+            f"{machine} machine given {type(event).__name__}.{event}; expected a {events.__name__}"
         )
 
 
@@ -351,9 +346,7 @@ def apply(machine: str, current: StrEnum, event: StrEnum) -> StrEnum | IllegalTr
     _, _, table, _ = MACHINES[machine]
     result: StrEnum | None = table.get((current, event))
     if result is None:
-        return IllegalTransition(
-            machine=machine, current=str(current), event=str(event)
-        )
+        return IllegalTransition(machine=machine, current=str(current), event=str(event))
     return result
 
 

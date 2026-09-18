@@ -190,9 +190,7 @@ def _mentions_money(annotation: object) -> bool:
     if origin is not None:
         return any(_mentions_money(arg) for arg in get_args(annotation))
     if isinstance(annotation, type) and issubclass(annotation, BaseModel):
-        return any(
-            _mentions_money(field.annotation) for field in annotation.model_fields.values()
-        )
+        return any(_mentions_money(field.annotation) for field in annotation.model_fields.values())
     return False
 
 

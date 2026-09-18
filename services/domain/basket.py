@@ -219,9 +219,7 @@ def compare_baskets(a: BasketCost, b: BasketCost) -> Comparison | MixedModeCompa
     return Comparison.NOT_COMPARABLE
 
 
-def cheaper_of(
-    left: BasketCost, right: BasketCost
-) -> BasketCost | None | MixedModeComparison:
+def cheaper_of(left: BasketCost, right: BasketCost) -> BasketCost | None | MixedModeComparison:
     """The cheaper of two baskets, as the basket itself.
 
     Prefer this over reading a positional enum: it cannot be misinterpreted,

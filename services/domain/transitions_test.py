@@ -81,8 +81,7 @@ def test_terminal_states_have_no_outgoing_edges(machine: str) -> None:
 def test_payment_happy_path() -> None:
     assert apply("payment", PaymentState.NOT_STARTED, PaymentEvent.CLAIM) is PaymentState.CLAIMED
     assert (
-        apply("payment", PaymentState.CLAIMED, PaymentEvent.REPORT_PENDING)
-        is PaymentState.PENDING
+        apply("payment", PaymentState.CLAIMED, PaymentEvent.REPORT_PENDING) is PaymentState.PENDING
     )
     assert (
         apply("payment", PaymentState.PENDING, PaymentEvent.REPORT_SUCCEEDED)
@@ -92,12 +91,10 @@ def test_payment_happy_path() -> None:
 
 def test_pending_and_unknown_interconvert() -> None:
     assert (
-        apply("payment", PaymentState.PENDING, PaymentEvent.REPORT_UNKNOWN)
-        is PaymentState.UNKNOWN
+        apply("payment", PaymentState.PENDING, PaymentEvent.REPORT_UNKNOWN) is PaymentState.UNKNOWN
     )
     assert (
-        apply("payment", PaymentState.UNKNOWN, PaymentEvent.REPORT_PENDING)
-        is PaymentState.PENDING
+        apply("payment", PaymentState.UNKNOWN, PaymentEvent.REPORT_PENDING) is PaymentState.PENDING
     )
 
 
@@ -112,9 +109,7 @@ def test_nothing_leaves_a_failed_payment(event: PaymentEvent) -> None:
 
 
 def test_a_payment_cannot_be_claimed_twice() -> None:
-    assert isinstance(
-        apply("payment", PaymentState.CLAIMED, PaymentEvent.CLAIM), IllegalTransition
-    )
+    assert isinstance(apply("payment", PaymentState.CLAIMED, PaymentEvent.CLAIM), IllegalTransition)
 
 
 # -- dispatch: the marker that makes ambiguity safe ------------------------
@@ -123,8 +118,7 @@ def test_a_payment_cannot_be_claimed_twice() -> None:
 def test_dispatch_goes_ready_to_started_or_expired_but_never_back() -> None:
     assert apply("dispatch", DispatchState.READY, DispatchEvent.START) is DispatchState.STARTED
     assert (
-        apply("dispatch", DispatchState.READY, DispatchEvent.EXPIRE)
-        is DispatchState.EXPIRED_UNSENT
+        apply("dispatch", DispatchState.READY, DispatchEvent.EXPIRE) is DispatchState.EXPIRED_UNSENT
     )
 
 
