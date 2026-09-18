@@ -21,6 +21,13 @@ function base64Url(bytes: Uint8Array | ArrayBuffer): string {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+/** Inverse of `base64Url`: decodes a base64url string (e.g. a JWT segment) back to text. */
+export function base64UrlDecode(value: string): string {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+  return atob(padded);
+}
+
 /** 43-128 char unreserved-character string per RFC 7636. */
 export function generateCodeVerifier(pkce: PkceCrypto = webCryptoPkce): string {
   return base64Url(pkce.randomBytes(64));

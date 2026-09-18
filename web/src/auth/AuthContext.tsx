@@ -9,6 +9,7 @@ import {
 } from "./cognitoClient";
 import { loadCognitoConfig, type CognitoConfig } from "./cognitoConfig";
 import {
+  base64UrlDecode,
   consumePendingAuthorization,
   generateCodeChallenge,
   generateCodeVerifier,
@@ -67,9 +68,7 @@ function decodeIdToken(idToken: string): AuthUser | null {
     return null;
   }
   try {
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const json = atob(normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "="));
-    const claims = JSON.parse(json) as { sub?: unknown; email?: unknown };
+    const claims = JSON.parse(base64UrlDecode(payload)) as { sub?: unknown; email?: unknown };
     if (typeof claims.sub !== "string") {
       return null;
     }
@@ -102,6 +101,7 @@ export function AuthProvider({
   const [user, setUser] = useState<AuthUser | null>(null);
   const tokensRef = useRef<StoredTokens | null>(null);
   const refreshInFlight = useRef<Promise<StoredTokens | null> | null>(null);
+  const initStartedRef = useRef(false);
 
   const applyTokens = useCallback(
     (tokens: StoredTokens) => {
@@ -124,6 +124,14 @@ export function AuthProvider({
   );
 
   useEffect(() => {
+    // consumePendingAuthorization is a one-shot delete-on-read: under
+    // StrictMode's dev-only double-invoke, a second call would find the
+    // record already consumed and wrongly clear a session mid-callback.
+    if (initStartedRef.current) {
+      return;
+    }
+    initStartedRef.current = true;
+
     const params = new URLSearchParams(location.search);
     const code = params.get("code");
     const state = params.get("state");

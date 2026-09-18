@@ -33,7 +33,8 @@ export function sessionKeyStore(storage: Storage | undefined = globalThis.sessio
   }
   const namespaced = (intentId: string): string => `proofpath.idempotency.${intentId}`;
   try {
-    storage.getItem(namespaced("probe"));
+    storage.setItem(namespaced("probe"), "1");
+    storage.removeItem(namespaced("probe"));
   } catch {
     return memoryKeyStore();
   }

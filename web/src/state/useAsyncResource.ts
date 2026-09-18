@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, isApiError } from "../api/errors";
 import type { ApiResult } from "../api/client";
 import { pollUntilTerminal, type PollPolicy, type Scheduler, type Visibility } from "../api/polling";
@@ -44,6 +44,7 @@ export function useAsyncResource<T>(
   const deps = options.deps ?? [];
 
   const retry = useCallback(() => setGeneration((g) => g + 1), []);
+  const lastDataRef = useRef<T | undefined>(undefined);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -52,8 +53,10 @@ export function useAsyncResource<T>(
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setState({ status: "loading" });
     setRequestId(undefined);
+    lastDataRef.current = undefined;
 
     const classifyOrDefault = (data: T): AsyncState<T> => {
+      lastDataRef.current = data;
       const kind = classify?.(data) ?? "success";
       return kind === "success" ? { status: "success", data } : { status: kind, data };
     };
@@ -73,7 +76,7 @@ export function useAsyncResource<T>(
               setState(classifyOrDefault(result.data));
             },
           });
-          if (outcome.status === "deadline_exceeded") {
+          if (outcome.status === "deadline_exceeded" && outcome.last === undefined) {
             setState({
               status: "error",
               error: new ApiError({
@@ -96,11 +99,16 @@ export function useAsyncResource<T>(
           ? error
           : new ApiError({ kind: "server", message: "Something unexpected happened." });
         setRequestId(apiError.requestId);
-        setState(
-          apiError.kind === "expired" || apiError.kind === "stale_version" || apiError.kind === "conflict"
-            ? { status: apiError.kind === "expired" ? "expired" : "error", error: apiError }
-            : { status: "error", error: apiError },
-        );
+        if (apiError.kind === "expired") {
+          setState({ status: "expired", error: apiError });
+        } else if (
+          (apiError.kind === "stale_version" || apiError.kind === "conflict") &&
+          lastDataRef.current !== undefined
+        ) {
+          setState({ status: "stale", data: lastDataRef.current, error: apiError });
+        } else {
+          setState({ status: "error", error: apiError });
+        }
       }
     }
 
