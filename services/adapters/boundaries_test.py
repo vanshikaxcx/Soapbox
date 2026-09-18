@@ -53,6 +53,7 @@ ALLOWED_THIRD_PARTY = {
     "botocore",
     "mypy_boto3_dynamodb",
     "mypy_boto3_events",
+    "mypy_boto3_stepfunctions",
     "pydantic",
 }
 

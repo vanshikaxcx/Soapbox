@@ -188,7 +188,10 @@ the `(provider, payment_key)` uniqueness; the index choice is this package's.
 
 `services/domain/jobs.py` (WP-02, merged) already defines:
 
-- `Job` with `generation: int`, and `execution_name` rendering `job_id-rN`;
+- `Job` with `generation: int`, and `run_id` rendering `job_id-rN` — an earlier
+  draft of this spec called it `execution_name`, which has never existed; the
+  merged vocabulary is authoritative, and `run_id` is also the field name on
+  `DuplicateDelivery`, so the two read the same way;
 - `retry()`, which is the **only** thing that increments the generation;
 - `start()`, `succeed()`, `fail()` as transitions returning `IllegalTransition`
   rather than raising;

@@ -25,8 +25,11 @@ from services.application.ports import (
     Action,
     Condition,
     ConditionFailed,
+    ExecutionState,
+    ExecutionStatus,
     Key,
     PublishRejected,
+    StartedExecution,
     Write,
     reject_duplicate_keys,
 )
@@ -159,6 +162,68 @@ class RecordingEventBus:
         return rejected
 
 
+class RecordingWorkflowEngine:
+    """A workflow engine that enforces the one rule the real one enforces.
+
+    Names are unique, and starting a name it already has resolves to that run
+    rather than creating a second. A fake that started whatever it was asked to
+    would make every duplicate-delivery test pass for the wrong reason -- the
+    suppression is the name, so the fake has to keep names.
+    """
+
+    def __init__(self) -> None:
+        self.started: list[str] = []
+        self._executions: dict[str, ExecutionStatus] = {}
+        self._payloads: dict[str, str] = {}
+
+    def start(self, *, run_id: str, payload: str) -> StartedExecution:
+        self.started.append(run_id)
+        existing = self._executions.get(run_id)
+        if existing is not None:
+            return StartedExecution(
+                run_id=run_id, execution_ref=self.execution_ref(run_id), started_new_run=False
+            )
+        self._executions[run_id] = ExecutionStatus(run_id=run_id, state=ExecutionState.RUNNING)
+        self._payloads[run_id] = payload
+        return StartedExecution(
+            run_id=run_id, execution_ref=self.execution_ref(run_id), started_new_run=True
+        )
+
+    def status(self, *, execution_ref: str) -> ExecutionStatus | None:
+        return self._executions.get(self.run_id_of(execution_ref))
+
+    # -- test helpers ------------------------------------------------------
+
+    def execution_ref(self, run_id: str) -> str:
+        return f"arn:fake:execution:{run_id}"
+
+    def run_id_of(self, execution_ref: str) -> str:
+        return execution_ref.rsplit(":", 1)[-1]
+
+    def payload_of(self, run_id: str) -> str:
+        return self._payloads[run_id]
+
+    def finish(
+        self,
+        run_id: str,
+        state: ExecutionState,
+        *,
+        result_ref: str | None = None,
+        error_code: str | None = None,
+    ) -> None:
+        """Move a run to a terminal state, the way the engine eventually would."""
+        self._executions[run_id] = ExecutionStatus(
+            run_id=run_id, state=state, result_ref=result_ref, error_code=error_code
+        )
+
+    def forget(self, run_id: str) -> None:
+        """Make the engine deny all knowledge, which is not the same as failing."""
+        self._executions.pop(run_id, None)
+
+    def runs(self) -> int:
+        return len(self._executions)
+
+
 class AllowAllPolicy:
     def allows(self, owner_id: str, action: Action, purchase_id: str) -> bool:
         return True
@@ -258,6 +323,7 @@ __all__ = [
     "MemoryAudioSink",
     "MemoryStore",
     "RecordingEventBus",
+    "RecordingWorkflowEngine",
     "ScriptedMerchant",
     "ScriptedSpeechSynthesizer",
     "SequentialIds",

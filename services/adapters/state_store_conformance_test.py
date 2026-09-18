@@ -31,9 +31,13 @@ from moto import mock_aws
 from mypy_boto3_dynamodb.client import DynamoDBClient
 
 from services.adapters.dynamo_state_store import (
+    BODY_ATTRIBUTE,
     PARTITION_ATTRIBUTE,
     SORT_ATTRIBUTE,
     TRANSACTION_LIMIT,
+    TYPE_ATTRIBUTE,
+    VERSION_ATTRIBUTE,
+    VERSION_FIELD,
     DynamoStateStore,
     TypeTagRefused,
     decode,
@@ -142,6 +146,67 @@ def put(
         expected_version=expected_version,
         reason=reason,
     )
+
+
+# -- the contract with the table --------------------------------------------
+
+
+def test_the_attribute_names_are_the_ones_the_table_declares() -> None:
+    """Pinned as literals, deliberately, and this is the one place they are.
+
+    Every other line in the codebase reaches these through the constants, which
+    is why nothing else can catch them being wrong: rename them all together and
+    the whole suite still passes, because it is internally consistent about a
+    name the table does not use. That is not hypothetical -- the adapter shipped
+    with ``pk``/``sk`` while ``infra`` declared ``PK``/``SK``, and it took
+    reading both files side by side to see it.
+
+    DynamoDB attribute names are case-sensitive, so ``pk`` and ``PK`` are simply
+    different attributes. The failure is not an error: a read of the wrong name
+    finds nothing, so a mismatched adapter reports an empty table and a
+    conditional write that should have been refused is admitted.
+
+    If ``infra/template.yaml`` ever changes these, this test is what fails.
+    """
+    assert PARTITION_ATTRIBUTE == "PK"
+    assert SORT_ATTRIBUTE == "SK"
+    assert TYPE_ATTRIBUTE == "TYPE"
+    assert BODY_ATTRIBUTE == "BODY"
+    assert VERSION_ATTRIBUTE == "VERSION"
+
+
+def test_the_version_attribute_and_the_version_field_are_not_the_same_thing() -> None:
+    """One names a column in DynamoDB, the other a field on a Pydantic record.
+
+    They were a single constant until the table's convention turned out to be
+    uppercase, at which point ``getattr(record, "VERSION")`` would have found
+    nothing -- and every row would have been written with no version to compare
+    against, silently turning every ``VERSION_MUST_BE`` into a write that could
+    not be refused.
+
+    There is no ``VERSION_ATTRIBUTE != VERSION_FIELD`` assertion here because
+    mypy rejects it as a non-overlapping comparison: both are ``Final``, so the
+    type checker already proves they can never be the same string. That proof is
+    stronger than the assertion would have been, so the assertion is left out.
+    """
+    assert VERSION_FIELD == "version"
+    assert VERSION_FIELD in Preparation.model_fields
+
+
+def test_a_stored_row_carries_the_declared_attribute_names() -> None:
+    """Checked on what actually lands in the table, not only on the constants.
+
+    The row is read back with the raw client and the names spelled out, so this
+    would still fail if the adapter and its own constants were renamed together.
+    """
+    with dynamo() as (store, client):
+        assert store.transact([put(KEY, preparation(version=4))]) is None
+        item = client.get_item(TableName=TABLE, Key={"PK": {"S": KEY[0]}, "SK": {"S": KEY[1]}})[
+            "Item"
+        ]
+    assert set(item) == {"PK", "SK", "TYPE", "BODY", "VERSION"}
+    assert item["VERSION"]["N"] == "4"
+    assert item["TYPE"]["S"].startswith("services.domain.purchase:")
 
 
 def test_both_stores_satisfy_the_port(store: StateStore) -> None:
@@ -517,12 +582,17 @@ def test_a_type_tag_outside_this_codebase_is_refused() -> None:
     reading of an item we did not write.
     """
     with pytest.raises(TypeTagRefused):
-        decode({"type": {"S": "os:system"}, "body": {"S": "{}"}})
+        decode({TYPE_ATTRIBUTE: {"S": "os:system"}, BODY_ATTRIBUTE: {"S": "{}"}})
 
 
 def test_a_type_tag_naming_nothing_is_refused() -> None:
     with pytest.raises(TypeTagRefused):
-        decode({"type": {"S": "services.domain.jobs:NoSuchRecord"}, "body": {"S": "{}"}})
+        decode(
+            {
+                TYPE_ATTRIBUTE: {"S": "services.domain.jobs:NoSuchRecord"},
+                BODY_ATTRIBUTE: {"S": "{}"},
+            }
+        )
 
 
 def test_a_record_the_store_cannot_describe_is_refused_on_the_way_in() -> None:

@@ -24,13 +24,16 @@ import boto3
 
 from services.adapters.dynamo_state_store import DynamoStateStore
 from services.adapters.eventbridge_bus import EventBridgeBus
-from services.application.ports import EventBus, StateStore
+from services.adapters.stepfunctions_engine import StepFunctionsEngine
+from services.application.ports import EventBus, StateStore, WorkflowEngine
 
 STORE_BACKEND: Final = "PROOFPATH_STORE_BACKEND"
 BUS_BACKEND: Final = "PROOFPATH_BUS_BACKEND"
 TABLE_NAME: Final = "PROOFPATH_TABLE_NAME"
 BUS_NAME: Final = "PROOFPATH_EVENT_BUS_NAME"
 EVENT_SOURCE: Final = "PROOFPATH_EVENT_SOURCE"
+WORKFLOW_BACKEND: Final = "PROOFPATH_WORKFLOW_BACKEND"
+STATE_MACHINE_ARN: Final = "PROOFPATH_STATE_MACHINE_ARN"
 
 #: AWS's own variable, not one of ours. Lambda sets it for every function, and
 #: reading it here rather than letting botocore find it means the region is a
@@ -83,6 +86,20 @@ def build_event_bus(env: Mapping[str, str] | None = None) -> EventBus:
     )
 
 
+def build_workflow_engine(env: Mapping[str, str] | None = None) -> WorkflowEngine:
+    """The engine a job's execution is started on and asked about."""
+    environment = os.environ if env is None else env
+    backend = _backend(environment, WORKFLOW_BACKEND)
+    if backend == MEMORY:
+        return _memory_engine()
+    state_machine_arn = _required(environment, STATE_MACHINE_ARN)
+    region = _required(environment, REGION)
+    return StepFunctionsEngine(
+        client=boto3.client("stepfunctions", region_name=region),
+        state_machine_arn=state_machine_arn,
+    )
+
+
 def _backend(env: Mapping[str, str], variable: str) -> str:
     value = _required(env, variable)
     if value not in BACKENDS:
@@ -117,6 +134,12 @@ def _memory_bus() -> EventBus:
     return RecordingEventBus()
 
 
+def _memory_engine() -> WorkflowEngine:
+    from services.application.fakes import RecordingWorkflowEngine
+
+    return RecordingWorkflowEngine()
+
+
 __all__ = [
     "AWS",
     "BACKENDS",
@@ -125,9 +148,12 @@ __all__ = [
     "EVENT_SOURCE",
     "MEMORY",
     "REGION",
+    "STATE_MACHINE_ARN",
     "STORE_BACKEND",
     "TABLE_NAME",
+    "WORKFLOW_BACKEND",
     "MisconfiguredEnvironment",
     "build_event_bus",
     "build_state_store",
+    "build_workflow_engine",
 ]

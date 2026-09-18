@@ -33,6 +33,12 @@ from services.application.ports.speech import (
     SpeechSynthesizer,
     TranscribeSessionUrl,
     TranscribeUrlSigner,
+from services.application.ports.workflows import (
+    TERMINAL_STATES,
+    ExecutionState,
+    ExecutionStatus,
+    StartedExecution,
+    WorkflowEngine,
 )
 
 __all__ = [
@@ -41,6 +47,8 @@ __all__ = [
     "Condition",
     "ConditionFailed",
     "EventBus",
+    "ExecutionState",
+    "ExecutionStatus",
     "IdFactory",
     "IdGenerator",
     "Key",
@@ -50,9 +58,12 @@ __all__ = [
     "SpeechSynthesisResult",
     "SpeechSynthesizer",
     "PublishRejected",
+    "StartedExecution",
     "StateStore",
     "TranscribeSessionUrl",
     "TranscribeUrlSigner",
+    "TERMINAL_STATES",
+    "WorkflowEngine",
     "Write",
     "read",
     "reject_duplicate_keys",

@@ -21,6 +21,15 @@ wheels = [
 ]
 
 [[package]]
+name = "antlr4-python3-runtime"
+version = "4.13.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/33/5f/2cdf6f7aca3b20d3f316e9f505292e1f256a32089bd702034c29ebde6242/antlr4_python3_runtime-4.13.2.tar.gz", hash = "sha256:909b647e1d2fc2b70180ac586df3933e38919c85f98ccc656a96cd3f25ef3916", size = 117467, upload-time = "2024-08-03T19:00:12.757Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/89/03/a851e84fcbb85214dc637b6378121ef9a0dd61b4c65264675d8a5c9b1ae7/antlr4_python3_runtime-4.13.2-py3-none-any.whl", hash = "sha256:fe3835eb8d33daece0e799090eda89719dbccee7aa39ef94eed3818cafa5a7e8", size = 144462, upload-time = "2024-08-03T19:00:11.134Z" },
+]
+
+[[package]]
 name = "anyio"
 version = "4.15.1"
 source = { registry = "https://pypi.org/simple" }
@@ -119,6 +128,9 @@ dynamodb = [
 ]
 events = [
     { name = "mypy-boto3-events" },
+]
+stepfunctions = [
+    { name = "mypy-boto3-stepfunctions" },
 ]
 
 [[package]]
@@ -621,6 +633,10 @@ dynamodb = [
 events = [
     { name = "jsonpath-ng" },
 ]
+stepfunctions = [
+    { name = "antlr4-python3-runtime" },
+    { name = "jsonpath-ng" },
+]
 
 [[package]]
 name = "msgpack"
@@ -679,6 +695,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/09/20/a95e6d66d2d181cfc7f6a4b450f80e5a7369edc6de4ab8dcbf00c0c3dee4/mypy_boto3_events-1.43.0.tar.gz", hash = "sha256:215b8d686e9b745a864090931d1dfcda2e49bec32383f887d580a2c46492dc26", size = 33709, upload-time = "2026-04-29T23:00:37.044Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/33/1e/0064c6964fe54c40fe7d2cd5b3c6c485e44d62a51766beb6a5f84ceff8e0/mypy_boto3_events-1.43.0-py3-none-any.whl", hash = "sha256:f7f5cd246be4d54f6982d42c8f30da47ef78cd2aea53311d251dc09c3f556f97", size = 37588, upload-time = "2026-04-29T23:00:34.723Z" },
+]
+
+[[package]]
+name = "mypy-boto3-stepfunctions"
+version = "1.43.88"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/7e/7e4b7288b22800161959e2b16c3e4de29a9e78498b8d6b4d4c135518300e/mypy_boto3_stepfunctions-1.43.88.tar.gz", hash = "sha256:09f166489439887f0b2300e9101cd469c7ed3f937c73213b33f60dc5ca7a4ab0", size = 31464, upload-time = "2026-09-03T19:52:05.454Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/11/f2/2df7b6c34ef98d6e073749b2a4da5f5fe9f8c511d2e72cfde0591251ce93/mypy_boto3_stepfunctions-1.43.88-py3-none-any.whl", hash = "sha256:f03eb3449290360ff6d82403171bbab20b5edba76c9581646edca9104bc909ef", size = 36453, upload-time = "2026-09-03T19:52:03.01Z" },
 ]
 
 [[package]]
@@ -823,10 +848,10 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "boto3-stubs", extra = ["dynamodb", "events"] },
+    { name = "boto3-stubs", extra = ["dynamodb", "events", "stepfunctions"] },
     { name = "httpx2" },
     { name = "hypothesis" },
-    { name = "moto", extra = ["dynamodb", "events"] },
+    { name = "moto", extra = ["dynamodb", "events", "stepfunctions"] },
     { name = "mypy" },
     { name = "pip-audit" },
     { name = "pytest" },
@@ -845,10 +870,10 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "boto3-stubs", extras = ["dynamodb", "events"], specifier = ">=1.42.0,<2" },
+    { name = "boto3-stubs", extras = ["dynamodb", "events", "stepfunctions"], specifier = ">=1.42.0,<2" },
     { name = "httpx2", specifier = ">=2.13,<3" },
     { name = "hypothesis", specifier = ">=6.140,<7" },
-    { name = "moto", extras = ["dynamodb", "events"], specifier = ">=5.1.0,<6" },
+    { name = "moto", extras = ["dynamodb", "events", "stepfunctions"], specifier = ">=5.1.0,<6" },
     { name = "mypy", specifier = ">=2.3.1,<2.4" },
     { name = "pip-audit", specifier = ">=2.10.1,<3" },
     { name = "pytest", specifier = ">=9.1.1,<10" },

@@ -54,21 +54,33 @@ if TYPE_CHECKING:  # pragma: no cover - import exists for the type checker only
         TransactWriteItemTypeDef,
     )
 
-#: The table's key attributes. Exported so ``infra/template.yaml`` can be
-#: authored against the names the adapter actually uses instead of a copy of
-#: them that drifts. Table *naming* is open question O-2 and is not decided here.
-PARTITION_ATTRIBUTE: Final = "pk"
-SORT_ATTRIBUTE: Final = "sk"
+#: The table's key attributes. Uppercase to match the table WP-01 declares --
+#: O-2, answered by P4 -- and uppercase consistently, so there is one convention
+#: rather than a rule with exceptions. DynamoDB attribute names are
+#: case-sensitive, so ``pk`` and ``PK`` are simply different attributes: getting
+#: this wrong reads as an empty table rather than as an error. Exported so
+#: ``infra/template.yaml`` is authored against the names the adapter actually
+#: uses instead of a second copy that drifts.
+PARTITION_ATTRIBUTE: Final = "PK"
+SORT_ATTRIBUTE: Final = "SK"
 
 #: The record's own JSON, and the class that has to be asked to parse it.
-BODY_ATTRIBUTE: Final = "body"
-TYPE_ATTRIBUTE: Final = "type"
+BODY_ATTRIBUTE: Final = "BODY"
+TYPE_ATTRIBUTE: Final = "TYPE"
 
-#: A mirror of the record's ``version`` field, denormalised to the top level.
-#: DynamoDB can only compare an attribute, and ``VERSION_MUST_BE`` compares a
-#: version -- so the version has to exist as an attribute. The JSON body stays
-#: authoritative; this is derived from it and never read back into a record.
-VERSION_ATTRIBUTE: Final = "version"
+#: A mirror of the record's version, denormalised to the top level. DynamoDB can
+#: only compare an attribute, and ``VERSION_MUST_BE`` compares a version -- so
+#: the version has to exist as an attribute. The JSON body stays authoritative;
+#: this is derived from it and never read back into a record.
+VERSION_ATTRIBUTE: Final = "VERSION"
+
+#: The *record's* field, which is a different thing from the attribute above and
+#: only looks the same when both are spelled alike. One names a field on a
+#: Pydantic model, the other names a column in DynamoDB; they were one constant
+#: until the table's convention turned out to be uppercase, at which point
+#: ``getattr(item, "VERSION")`` would have found nothing and silently written
+#: every row without a version to compare against.
+VERSION_FIELD: Final = "version"
 
 #: DynamoDB's own ceiling on one transaction. Named so that exceeding it fails
 #: with a sentence rather than with a service validation error.
@@ -122,7 +134,7 @@ def encode(item: object) -> dict[str, AttributeValueTypeDef]:
         TYPE_ATTRIBUTE: {"S": type_tag(item)},
         BODY_ATTRIBUTE: {"S": item.model_dump_json()},
     }
-    version = getattr(item, VERSION_ATTRIBUTE, None)
+    version = getattr(item, VERSION_FIELD, None)
     if isinstance(version, int) and not isinstance(version, bool):
         attributes[VERSION_ATTRIBUTE] = {"N": str(version)}
     return attributes
@@ -283,8 +295,7 @@ class DynamoStateStore:
             if write.condition is Condition.MUST_NOT_EXIST and existing is not None:
                 return ConditionFailed(key=write.key, reason=write.reason)
             if write.condition is Condition.VERSION_MUST_BE and (
-                existing is None
-                or getattr(existing, VERSION_ATTRIBUTE, None) != write.expected_version
+                existing is None or getattr(existing, VERSION_FIELD, None) != write.expected_version
             ):
                 return ConditionFailed(key=write.key, reason=write.reason)
         return None
@@ -340,7 +351,7 @@ def _guard_for(write: Write) -> _Guard:
     """The guard, as DynamoDB spells it.
 
     ``VERSION_MUST_BE`` with no expected version is not a no-op: the reference
-    implementation compares ``getattr(existing, "version", None)`` against
+    implementation compares ``getattr(existing, VERSION_FIELD, None)`` against
     ``None``, which holds only for a record that exists and carries no version.
     Spelled out here so the two stores agree on the edge rather than on the
     common case alone.
@@ -371,6 +382,7 @@ __all__ = [
     "TRANSACTION_LIMIT",
     "TYPE_ATTRIBUTE",
     "VERSION_ATTRIBUTE",
+    "VERSION_FIELD",
     "DynamoStateStore",
     "TypeTagRefused",
     "decode",

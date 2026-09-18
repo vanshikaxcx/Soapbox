@@ -26,6 +26,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final, TypedDict
 
+from services.adapters.dynamo_state_store import PARTITION_ATTRIBUTE
 from services.application.outbox import OutboxPublisher
 
 #: The partition prefix WP-08 writes outbox rows under. The event source
@@ -111,7 +112,7 @@ def _partition(stream: object) -> str | None:
     keys = stream.get("Keys")
     if not isinstance(keys, Mapping):
         return None
-    partition = keys.get("pk")
+    partition = keys.get(PARTITION_ATTRIBUTE)
     if not isinstance(partition, Mapping):
         return None
     value = partition.get("S")
