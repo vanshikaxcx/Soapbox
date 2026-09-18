@@ -25,11 +25,18 @@ test("contract uses the documented AWS/SAM-compatible route subset", () => {
   assert.match(source, /^  \/health:\n    get:/m);
 });
 
-test("subset validation rejects future routes, methods, external refs, and unsupported composition", () => {
-  assert.ok(validateOpenApiAwsSubset(`${source}\n  /future:\n`).length > 0);
+test("subset validation accepts additional documented routes but rejects a duplicate path, a missing GET /health, external refs, and unsupported composition", () => {
+  assert.deepEqual(
+    validateOpenApiAwsSubset(`${source}\n  /future:\n    get:\n`),
+    [],
+  );
   assert.ok(
-    validateOpenApiAwsSubset(source.replace("    get:", "    post:")).length >
-      0,
+    validateOpenApiAwsSubset(`${source}\n  /health:\n    post:\n`).length > 0,
+  );
+  assert.ok(
+    validateOpenApiAwsSubset(
+      source.replace("  /health:\n    get:", "  /health:\n    post:"),
+    ).length > 0,
   );
   assert.ok(
     validateOpenApiAwsSubset(
