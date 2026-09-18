@@ -64,19 +64,19 @@ ALL_CONNECTORS: list[tuple[str, Merchant]] = LIVE_CONNECTORS + FIXTURE_CONNECTOR
 ALL_IDS = ["blinkit-live", "zepto-live", "blinkit-fixture", "zepto-fixture"]
 
 
-def _params(connectors: list[tuple[str, Merchant]], ids: list[str]) -> dict[str, object]:
-    return {"argnames": "name,merchant", "argvalues": connectors, "ids": ids}
+def _params(connectors: list[tuple[str, Merchant]], ids: list[str]) -> pytest.MarkDecorator:
+    return pytest.mark.parametrize("name,merchant", connectors, ids=ids)
 
 
 # -- every connector: port compliance ------------------------------------------
 
 
-@pytest.mark.parametrize(**_params(ALL_CONNECTORS, ALL_IDS))
+@_params(ALL_CONNECTORS, ALL_IDS)
 def test_every_connector_implements_the_merchant_port(name: str, merchant: Merchant) -> None:
     assert isinstance(merchant, Merchant)
 
 
-@pytest.mark.parametrize(**_params(ALL_CONNECTORS, ALL_IDS))
+@_params(ALL_CONNECTORS, ALL_IDS)
 def test_every_connector_reports_its_own_registry_name(name: str, merchant: Merchant) -> None:
     assert merchant.name == name
 
@@ -84,7 +84,7 @@ def test_every_connector_reports_its_own_registry_name(name: str, merchant: Merc
 # -- every connector: assess_fees is pure, honest, and never negative ---------
 
 
-@pytest.mark.parametrize(**_params(ALL_CONNECTORS, ALL_IDS))
+@_params(ALL_CONNECTORS, ALL_IDS)
 def test_assess_fees_is_fast_and_never_raises(name: str, merchant: Merchant) -> None:
     started = time.monotonic()
     result = merchant.assess_fees(LOCATION, EXACT_LINES, FUTURE_DEADLINE)
@@ -96,7 +96,7 @@ def test_assess_fees_is_fast_and_never_raises(name: str, merchant: Merchant) -> 
     assert result is None or result.completeness in {"complete", "estimated", "unknown"}
 
 
-@pytest.mark.parametrize(**_params(ALL_CONNECTORS, ALL_IDS))
+@_params(ALL_CONNECTORS, ALL_IDS)
 def test_assess_fees_never_returns_a_negative_charge(name: str, merchant: Merchant) -> None:
     result = merchant.assess_fees(LOCATION, EXACT_LINES, FUTURE_DEADLINE)
     assert result is not None
@@ -104,7 +104,7 @@ def test_assess_fees_never_returns_a_negative_charge(name: str, merchant: Mercha
         assert value is None or value >= 0
 
 
-@pytest.mark.parametrize(**_params(LIVE_CONNECTORS, ["blinkit", "zepto"]))
+@_params(LIVE_CONNECTORS, ["blinkit", "zepto"])
 def test_live_connectors_never_claim_a_complete_fee(name: str, merchant: Merchant) -> None:
     """Regression guard for the honesty rule itself: a live connector that
     started returning "complete" would be claiming a real-time fee neither
@@ -127,7 +127,7 @@ def test_fixture_connector_reports_a_complete_fee() -> None:
 # -- live connectors: deadline and allowlist enforcement -----------------------
 
 
-@pytest.mark.parametrize(**_params(LIVE_CONNECTORS, ["blinkit", "zepto"]))
+@_params(LIVE_CONNECTORS, ["blinkit", "zepto"])
 def test_search_with_an_elapsed_deadline_never_touches_the_browser(
     name: str, merchant: Merchant
 ) -> None:
@@ -143,7 +143,7 @@ def test_search_with_an_elapsed_deadline_never_touches_the_browser(
     assert result.code.value == "timeout"  # type: ignore[union-attr]
 
 
-@pytest.mark.parametrize(**_params(LIVE_CONNECTORS, ["blinkit", "zepto"]))
+@_params(LIVE_CONNECTORS, ["blinkit", "zepto"])
 def test_allowlist_blocks_navigation_outside_the_merchants_own_domain(
     name: str, merchant: Merchant
 ) -> None:
@@ -151,7 +151,7 @@ def test_allowlist_blocks_navigation_outside_the_merchants_own_domain(
         merchant._assert_allowed("https://evil.example/steal")  # type: ignore[attr-defined]
 
 
-@pytest.mark.parametrize(**_params(LIVE_CONNECTORS, ["blinkit", "zepto"]))
+@_params(LIVE_CONNECTORS, ["blinkit", "zepto"])
 def test_allowlist_permits_the_merchants_own_domain(name: str, merchant: Merchant) -> None:
     own_domain = next(iter(merchant._allowed_domains()))  # type: ignore[attr-defined]
     merchant._assert_allowed(f"https://{own_domain}/some/path")  # type: ignore[attr-defined]
@@ -160,7 +160,7 @@ def test_allowlist_permits_the_merchants_own_domain(name: str, merchant: Merchan
 # -- fixture connectors: safe to actually call search() ------------------------
 
 
-@pytest.mark.parametrize(**_params(FIXTURE_CONNECTORS, ["blinkit-fixture", "zepto-fixture"]))
+@_params(FIXTURE_CONNECTORS, ["blinkit-fixture", "zepto-fixture"])
 def test_fixture_search_never_returns_another_merchants_observation(
     name: str, merchant: Merchant
 ) -> None:
