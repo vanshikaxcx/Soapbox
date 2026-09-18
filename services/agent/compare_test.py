@@ -149,8 +149,12 @@ def fee(merchant: str, *, subtotal_paise: int, delivery_paise: int | None = 0) -
 
 def test_to_domain_observation_converts_fractional_pack_size_without_truncating() -> None:
     raw = raw_observation(
-        merchant="blinkit", sku="sku-1", name="Fortune Basmati Rice", price_paise=25_000,
-        pack_size=0.5, unit="kg",
+        merchant="blinkit",
+        sku="sku-1",
+        name="Fortune Basmati Rice",
+        price_paise=25_000,
+        pack_size=0.5,
+        unit="kg",
     )
     converted = to_domain_observation(raw)
     assert converted is not None
@@ -170,12 +174,24 @@ def test_resolve_item_picks_the_sku_that_meets_quantity_at_least_cost() -> None:
     item = an_item(quantity=Quantity.of(5, Unit.KG))
     observations = [
         to_domain_observation(
-            raw_observation(merchant="blinkit", sku="rice-1kg", name="Fortune Rice 1kg",
-                             price_paise=12_000, pack_size=1.0, unit="kg")
+            raw_observation(
+                merchant="blinkit",
+                sku="rice-1kg",
+                name="Fortune Rice 1kg",
+                price_paise=12_000,
+                pack_size=1.0,
+                unit="kg",
+            )
         ),
         to_domain_observation(
-            raw_observation(merchant="blinkit", sku="rice-5kg", name="Fortune Rice 5kg",
-                             price_paise=55_000, pack_size=5.0, unit="kg")
+            raw_observation(
+                merchant="blinkit",
+                sku="rice-5kg",
+                name="Fortune Rice 5kg",
+                price_paise=55_000,
+                pack_size=5.0,
+                unit="kg",
+            )
         ),
     ]
     result = resolve_item_for_merchant(
@@ -192,8 +208,13 @@ def test_resolve_item_reports_no_results_when_nothing_in_stock() -> None:
     item = an_item()
     observations = [
         to_domain_observation(
-            raw_observation(merchant="blinkit", sku="rice-1", name="Fortune Rice",
-                             price_paise=10_000, in_stock=False)
+            raw_observation(
+                merchant="blinkit",
+                sku="rice-1",
+                name="Fortune Rice",
+                price_paise=10_000,
+                in_stock=False,
+            )
         )
     ]
     result = resolve_item_for_merchant(
@@ -207,8 +228,9 @@ def test_resolve_item_never_returns_a_forbidden_brand_substitution() -> None:
     item = an_item(hard_attributes={"brand": "Fortune"}, flexibility=Flexibility.EXACT_ONLY)
     observations = [
         to_domain_observation(
-            raw_observation(merchant="blinkit", sku="rice-tata", name="Tata Sampann Rice",
-                             price_paise=48_000)
+            raw_observation(
+                merchant="blinkit", sku="rice-tata", name="Tata Sampann Rice", price_paise=48_000
+            )
         )
     ]
     result = resolve_item_for_merchant(
@@ -222,8 +244,9 @@ def test_resolve_item_records_a_permitted_brand_substitution() -> None:
     item = an_item(hard_attributes={"brand": "Fortune"}, flexibility=Flexibility.BRAND_FLEXIBLE)
     observations = [
         to_domain_observation(
-            raw_observation(merchant="blinkit", sku="rice-tata", name="Tata Sampann Rice",
-                             price_paise=48_000)
+            raw_observation(
+                merchant="blinkit", sku="rice-tata", name="Tata Sampann Rice", price_paise=48_000
+            )
         )
     ]
     result = resolve_item_for_merchant(
@@ -239,12 +262,17 @@ def test_resolve_item_prefers_exact_match_over_substitution() -> None:
     item = an_item(hard_attributes={"brand": "Fortune"}, flexibility=Flexibility.BRAND_FLEXIBLE)
     observations = [
         to_domain_observation(
-            raw_observation(merchant="blinkit", sku="rice-tata", name="Tata Sampann Rice",
-                             price_paise=40_000)
+            raw_observation(
+                merchant="blinkit", sku="rice-tata", name="Tata Sampann Rice", price_paise=40_000
+            )
         ),
         to_domain_observation(
-            raw_observation(merchant="blinkit", sku="rice-fortune", name="Fortune Basmati Rice",
-                             price_paise=60_000)
+            raw_observation(
+                merchant="blinkit",
+                sku="rice-fortune",
+                name="Fortune Basmati Rice",
+                price_paise=60_000,
+            )
         ),
     ]
     result = resolve_item_for_merchant(
@@ -271,19 +299,33 @@ def test_run_comparison_reports_no_definitive_winner_when_both_baskets_are_only_
     intent = an_intent(items=(item,))
     blinkit = FakeMerchant(
         "blinkit",
-        catalog={"rice": [raw_observation(merchant="blinkit", sku="b-rice", name="Fortune Rice",
-                                            price_paise=90_000)]},
+        catalog={
+            "rice": [
+                raw_observation(
+                    merchant="blinkit", sku="b-rice", name="Fortune Rice", price_paise=90_000
+                )
+            ]
+        },
         fee=fee("blinkit", subtotal_paise=90_000, delivery_paise=3_000),
     )
     zepto = FakeMerchant(
         "zepto",
-        catalog={"rice": [raw_observation(merchant="zepto", sku="z-rice", name="Fortune Rice",
-                                            price_paise=48_000)]},
+        catalog={
+            "rice": [
+                raw_observation(
+                    merchant="zepto", sku="z-rice", name="Fortune Rice", price_paise=48_000
+                )
+            ]
+        },
         fee=fee("zepto", subtotal_paise=48_000, delivery_paise=0),
     )
     outcome = run_comparison(
-        intent=intent, location=LOCATION, mode=Mode.LIVE, now=NOW,
-        id_factory=SequentialIds(), registry={"blinkit": blinkit, "zepto": zepto},
+        intent=intent,
+        location=LOCATION,
+        mode=Mode.LIVE,
+        now=NOW,
+        id_factory=SequentialIds(),
+        registry={"blinkit": blinkit, "zepto": zepto},
     )
     assert isinstance(outcome, ComparisonOutcome)
     assert outcome.winner_merchant_id is None
@@ -305,19 +347,33 @@ def test_run_comparison_picks_a_winner_when_one_basket_has_no_open_charges() -> 
     intent = an_intent(items=(item,))
     blinkit = FakeMerchant(
         "blinkit",
-        catalog={"rice": [raw_observation(merchant="blinkit", sku="b-rice", name="Fortune Rice",
-                                            price_paise=40_000)]},
+        catalog={
+            "rice": [
+                raw_observation(
+                    merchant="blinkit", sku="b-rice", name="Fortune Rice", price_paise=40_000
+                )
+            ]
+        },
         fee=None,
     )
     zepto = FakeMerchant(
         "zepto",
-        catalog={"rice": [raw_observation(merchant="zepto", sku="z-rice", name="Fortune Rice",
-                                            price_paise=48_000)]},
+        catalog={
+            "rice": [
+                raw_observation(
+                    merchant="zepto", sku="z-rice", name="Fortune Rice", price_paise=48_000
+                )
+            ]
+        },
         fee=fee("zepto", subtotal_paise=48_000, delivery_paise=0),
     )
     outcome = run_comparison(
-        intent=intent, location=LOCATION, mode=Mode.LIVE, now=NOW,
-        id_factory=SequentialIds(), registry={"blinkit": blinkit, "zepto": zepto},
+        intent=intent,
+        location=LOCATION,
+        mode=Mode.LIVE,
+        now=NOW,
+        id_factory=SequentialIds(),
+        registry={"blinkit": blinkit, "zepto": zepto},
     )
     assert outcome.winner_merchant_id == "blinkit"
 
@@ -334,8 +390,11 @@ def test_a_fee_component_the_merchant_never_assessed_makes_the_total_unknown() -
     intent = an_intent(items=(item,))
     blinkit = FakeMerchant(
         "blinkit",
-        catalog={"rice": [raw_observation(merchant="blinkit", sku="b-rice", name="Rice",
-                                            price_paise=50_000)]},
+        catalog={
+            "rice": [
+                raw_observation(merchant="blinkit", sku="b-rice", name="Rice", price_paise=50_000)
+            ]
+        },
         fee=RawFeeAssessment(
             merchant="blinkit",
             location=LOCATION,
@@ -348,8 +407,12 @@ def test_a_fee_component_the_merchant_never_assessed_makes_the_total_unknown() -
         ),
     )
     outcome = run_comparison(
-        intent=intent, location=LOCATION, mode=Mode.LIVE, now=NOW,
-        id_factory=SequentialIds(), registry={"blinkit": blinkit},
+        intent=intent,
+        location=LOCATION,
+        mode=Mode.LIVE,
+        now=NOW,
+        id_factory=SequentialIds(),
+        registry={"blinkit": blinkit},
     )
     basket = outcome.results[0].basket
     assert basket is not None
@@ -364,13 +427,20 @@ def test_run_comparison_reports_partial_coverage_not_a_failed_search() -> None:
     blinkit = FakeMerchant("blinkit", catalog={})  # nothing found
     zepto = FakeMerchant(
         "zepto",
-        catalog={"rice": [raw_observation(merchant="zepto", sku="z-rice", name="Rice",
-                                            price_paise=48_000)]},
+        catalog={
+            "rice": [
+                raw_observation(merchant="zepto", sku="z-rice", name="Rice", price_paise=48_000)
+            ]
+        },
         fee=fee("zepto", subtotal_paise=48_000),
     )
     outcome = run_comparison(
-        intent=intent, location=LOCATION, mode=Mode.LIVE, now=NOW,
-        id_factory=SequentialIds(), registry={"blinkit": blinkit, "zepto": zepto},
+        intent=intent,
+        location=LOCATION,
+        mode=Mode.LIVE,
+        now=NOW,
+        id_factory=SequentialIds(),
+        registry={"blinkit": blinkit, "zepto": zepto},
     )
     by_merchant = {r.merchant_id: r for r in outcome.results}
     assert not by_merchant["blinkit"].is_complete
@@ -384,13 +454,20 @@ def test_run_comparison_excludes_a_basket_that_exceeds_budget() -> None:
     intent = an_intent(items=(item,), budget_paise=45_000)
     blinkit = FakeMerchant(
         "blinkit",
-        catalog={"rice": [raw_observation(merchant="blinkit", sku="b-rice", name="Rice",
-                                            price_paise=50_000)]},
+        catalog={
+            "rice": [
+                raw_observation(merchant="blinkit", sku="b-rice", name="Rice", price_paise=50_000)
+            ]
+        },
         fee=fee("blinkit", subtotal_paise=50_000),
     )
     outcome = run_comparison(
-        intent=intent, location=LOCATION, mode=Mode.LIVE, now=NOW,
-        id_factory=SequentialIds(), registry={"blinkit": blinkit},
+        intent=intent,
+        location=LOCATION,
+        mode=Mode.LIVE,
+        now=NOW,
+        id_factory=SequentialIds(),
+        registry={"blinkit": blinkit},
     )
     assert outcome.winner_merchant_id is None
     assert outcome.budget_check == BudgetCheck.EXCEEDED.value
@@ -403,18 +480,27 @@ def test_run_comparison_selects_the_cheaper_in_budget_basket_over_the_global_che
     intent = an_intent(items=(item,), budget_paise=49_000)
     cheapest_but_over_budget = FakeMerchant(
         "blinkit",
-        catalog={"rice": [raw_observation(merchant="blinkit", sku="b-rice", name="Rice",
-                                            price_paise=40_000)]},
+        catalog={
+            "rice": [
+                raw_observation(merchant="blinkit", sku="b-rice", name="Rice", price_paise=40_000)
+            ]
+        },
         fee=fee("blinkit", subtotal_paise=40_000, delivery_paise=15_000),  # total 55,000
     )
     affordable = FakeMerchant(
         "zepto",
-        catalog={"rice": [raw_observation(merchant="zepto", sku="z-rice", name="Rice",
-                                            price_paise=48_000)]},
+        catalog={
+            "rice": [
+                raw_observation(merchant="zepto", sku="z-rice", name="Rice", price_paise=48_000)
+            ]
+        },
         fee=fee("zepto", subtotal_paise=48_000, delivery_paise=0),  # total 48,000
     )
     outcome = run_comparison(
-        intent=intent, location=LOCATION, mode=Mode.LIVE, now=NOW,
+        intent=intent,
+        location=LOCATION,
+        mode=Mode.LIVE,
+        now=NOW,
         id_factory=SequentialIds(),
         registry={"blinkit": cheapest_but_over_budget, "zepto": affordable},
     )
@@ -428,16 +514,22 @@ def test_run_comparison_calls_every_merchant_for_every_item() -> None:
     blinkit = FakeMerchant(
         "blinkit",
         catalog={
-            "rice": [raw_observation(merchant="blinkit", sku="b-rice", name="Rice",
-                                      price_paise=50_000)],
-            "oil": [raw_observation(merchant="blinkit", sku="b-oil", name="Oil",
-                                     price_paise=15_000)],
+            "rice": [
+                raw_observation(merchant="blinkit", sku="b-rice", name="Rice", price_paise=50_000)
+            ],
+            "oil": [
+                raw_observation(merchant="blinkit", sku="b-oil", name="Oil", price_paise=15_000)
+            ],
         },
         fee=fee("blinkit", subtotal_paise=65_000),
     )
     outcome = run_comparison(
-        intent=intent, location=LOCATION, mode=Mode.LIVE, now=NOW,
-        id_factory=SequentialIds(), registry={"blinkit": blinkit},
+        intent=intent,
+        location=LOCATION,
+        mode=Mode.LIVE,
+        now=NOW,
+        id_factory=SequentialIds(),
+        registry={"blinkit": blinkit},
     )
     assert sorted(blinkit.search_calls) == ["oil", "rice"]
     result = outcome.results[0]
@@ -451,13 +543,20 @@ def test_run_comparison_never_mixes_live_and_fixture_baskets_across_merchants() 
     intent = an_intent(items=(item,))
     blinkit = FakeMerchant(
         "blinkit",
-        catalog={"rice": [raw_observation(merchant="blinkit", sku="b-rice", name="Rice",
-                                            price_paise=50_000)]},
+        catalog={
+            "rice": [
+                raw_observation(merchant="blinkit", sku="b-rice", name="Rice", price_paise=50_000)
+            ]
+        },
         fee=fee("blinkit", subtotal_paise=50_000),
     )
     outcome = run_comparison(
-        intent=intent, location=LOCATION, mode=Mode.FIXTURE, now=NOW,
-        id_factory=SequentialIds(), registry={"blinkit": blinkit},
+        intent=intent,
+        location=LOCATION,
+        mode=Mode.FIXTURE,
+        now=NOW,
+        id_factory=SequentialIds(),
+        registry={"blinkit": blinkit},
     )
     basket = outcome.results[0].basket
     assert basket is not None
@@ -471,14 +570,20 @@ def test_run_comparison_error_from_connector_is_partial_not_fatal() -> None:
         "blinkit",
         catalog={
             "rice": MerchantError(
-                merchant="blinkit", code=MerchantErrorCode.TIMEOUT, message="timed out",
+                merchant="blinkit",
+                code=MerchantErrorCode.TIMEOUT,
+                message="timed out",
                 occurred_at=NOW,
             )
         },
     )
     outcome = run_comparison(
-        intent=intent, location=LOCATION, mode=Mode.LIVE, now=NOW,
-        id_factory=SequentialIds(), registry={"blinkit": blinkit},
+        intent=intent,
+        location=LOCATION,
+        mode=Mode.LIVE,
+        now=NOW,
+        id_factory=SequentialIds(),
+        registry={"blinkit": blinkit},
     )
     result = outcome.results[0]
     assert not result.is_complete

@@ -75,9 +75,7 @@ def test_multiple_fragments_split_on_comma_and_and() -> None:
 
 
 def test_known_fixture_image_resolves() -> None:
-    result = an_extractor().extract_from_image(
-        FIXTURE_IMAGE_MILK_AND_RICE, "image/jpeg", DEADLINE
-    )
+    result = an_extractor().extract_from_image(FIXTURE_IMAGE_MILK_AND_RICE, "image/jpeg", DEADLINE)
     assert not result.unresolved
     names = {c.name for c in result.candidates}
     assert names == {"milk", "basmati rice"}

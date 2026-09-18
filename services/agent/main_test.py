@@ -45,8 +45,11 @@ def test_health_responds_without_auth(client: TestClient) -> None:
 def test_tasks_search_returns_fixture_observations(client: TestClient) -> None:
     resp = client.post(
         "/tasks/search",
-        json={"location": LOCATION, "item": {"name": "rice", "quantity": 5, "unit": "kg"},
-              "mode": "fixture"},
+        json={
+            "location": LOCATION,
+            "item": {"name": "rice", "quantity": 5, "unit": "kg"},
+            "mode": "fixture",
+        },
     )
     assert resp.status_code == 200
     observations = resp.json()["observations"]
@@ -87,8 +90,11 @@ def test_tasks_search_requires_the_bearer_token_when_one_is_configured(
     monkeypatch.setattr(main_module, "AGENT_SERVICE_TOKEN", "secret-token")
     resp = client.post(
         "/tasks/search",
-        json={"location": LOCATION, "item": {"name": "rice", "quantity": 5, "unit": "kg"},
-              "mode": "fixture"},
+        json={
+            "location": LOCATION,
+            "item": {"name": "rice", "quantity": 5, "unit": "kg"},
+            "mode": "fixture",
+        },
     )
     assert resp.status_code == 401
 
