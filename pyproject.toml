@@ -18,6 +18,10 @@ namespaces = true
 
 [dependency-groups]
 dev = [
+  # WP-02's invariants are stated as properties, not examples: unit conversion,
+  # comparison antisymmetry and the money bounds are checked over generated
+  # inputs rather than a handful of chosen ones.
+  "hypothesis>=6.140,<7",
   "mypy>=2.3.1,<2.4",
   "pip-audit>=2.10.1,<3",
   "pytest>=9.1.1,<10",
@@ -31,6 +35,12 @@ preview = false
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+# Tests sit beside the behaviour they describe (services/**/*_test.py) as well as
+# in tests/. pythonpath keeps `services` importable without an editable install.
+testpaths = ["tests", "services"]
+pythonpath = ["."]
 
 [tool.mypy]
 python_version = "3.12"
