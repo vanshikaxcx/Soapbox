@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
+from services.domain.intent import Intent, Item
+from services.domain.units import Quantity, Unit
 
 from services.agent import main as main_module
 from services.agent.main import app
-from services.domain.intent import Intent, Item
-from services.domain.units import Quantity, Unit
 
 
 @pytest.fixture

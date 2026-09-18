@@ -41,8 +41,6 @@ from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
-from services.agent.config import ITEM_FETCH_DEADLINE_SECONDS, SEARCH_CONCURRENCY
-from services.application.ports import IdFactory
 from services.domain.basket import (
     Basket,
     BasketCost,
@@ -87,6 +85,9 @@ from services.domain.money import (
     check_budget,
 )
 from services.domain.units import Dimension, Quantity, Unit, base_units_per, dimension_of
+
+from services.agent.config import ITEM_FETCH_DEADLINE_SECONDS, SEARCH_CONCURRENCY
+from services.application.ports import IdFactory
 from services.merchants.base import Merchant
 from services.merchants.models import ExtractionStatus as RawExtractionStatus
 from services.merchants.models import FeeAssessment as RawFeeAssessment

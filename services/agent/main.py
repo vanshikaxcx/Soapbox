@@ -16,14 +16,14 @@ from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
+from services.domain.ids import Mode as DomainMode
+from services.domain.intent import Intent
 
 from services.agent.compare import run_comparison
 from services.agent.config import AGENT_SERVICE_TOKEN, TESTED_LOCALITY_PINCODE
 from services.agent.extract import run_extraction
 from services.agent.tools.search_merchants import search_merchants
 from services.application.ports import IdFactory
-from services.domain.ids import Mode as DomainMode
-from services.domain.intent import Intent
 from services.merchants.blinkit import warm_location
 from services.merchants.models import Location
 from services.merchants.models import Mode as MerchantMode
