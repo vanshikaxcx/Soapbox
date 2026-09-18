@@ -27,6 +27,7 @@ from services.application.ports import (
     ConditionFailed,
     Key,
     Write,
+    reject_duplicate_keys,
 )
 from services.application.ports.speech import (
     SpeechSynthesisError,
@@ -96,6 +97,7 @@ class MemoryStore:
             hook(writes)
 
         self.transactions.append(writes)
+        reject_duplicate_keys(writes)
 
         for write in writes:
             existing = self._items.get(write.key)

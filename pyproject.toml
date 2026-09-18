@@ -14,10 +14,13 @@ dependencies = [
   "starlette>=1.3.1,<2",
   # services/merchants: live-connector browser automation (Blinkit/Zepto).
   "playwright>=1.49.1,<1.50",
-  # services/merchants/evidence.py: S3EvidenceSink (WP-01 AC-01-04), used
-  # only in the deployed Fargate task via build_evidence_sink(); local
-  # dev/test uses LocalDiskEvidenceSink and never imports this.
-  "boto3>=1.35,<2",
+  # Two users: services/merchants/evidence.py's S3EvidenceSink (WP-01
+  # AC-01-04, deployed Fargate task only) and WP-07's DynamoDB StateStore
+  # adapter, which the composition root selects by environment and so must
+  # be installed wherever the application runs. Floor is WP-07's, the
+  # higher of the two. Only services/adapters/** and services/merchants/**
+  # may import it -- the boundary tests fail the build otherwise.
+  "boto3>=1.42.0,<2",
 ]
 
 [build-system]
@@ -38,6 +41,14 @@ dev = [
   # starlette>=1.0's TestClient requires this (see main_test.py's use of
   # fastapi.testclient.TestClient); test-only, never needed at runtime.
   "httpx2>=2.13,<3",
+  # Type information for boto3. Dev-only because it ships no runtime code; mypy
+  # runs strict over services/**, and an untyped client would make the adapter's
+  # calls Any and quietly stop checking them.
+  "boto3-stubs[dynamodb]>=1.42.0,<2",
+  # An in-process DynamoDB, so the conformance suite proves the adapter against
+  # real conditional-write and transaction semantics with no AWS account, no
+  # network and no shared fixture to leak between tests.
+  "moto[dynamodb]>=5.1.0,<6",
   "mypy>=2.3.1,<2.4",
   "pip-audit>=2.10.1,<3",
   "pytest>=9.1.1,<10",
@@ -72,13 +83,14 @@ files = ["services", "tests"]
 module = ["services.merchants.p3_merchant_port_adapter"]
 disable_error_code = ["attr-defined"]
 
-# boto3/botocore ship no py.typed marker and no bundled stubs; a stub package
-# (types-boto3) would need pinning per-service used, which is premature
-# before WP-01 fixes which Bedrock/AWS calls this project actually makes.
-# Covers both the bare `import boto3` construction call in S3EvidenceSink
-# (services/merchants/evidence.py) and bedrock.py's `from botocore.exceptions
-# import ...` -- every typed call site itself stays off boto3/botocore's own
-# untyped surface via S3ClientProtocol, not a repo-wide untyped-imports allowance.
+# boto3-stubs[dynamodb] covers WP-07's DynamoDB adapter, but nothing else here:
+# boto3/botocore ship no py.typed marker, and stubbing the rest would need a
+# pin per service used, which is premature before WP-01 fixes which Bedrock/AWS
+# calls this project actually makes. This override covers the bare `import
+# boto3` construction call in S3EvidenceSink (services/merchants/evidence.py)
+# and bedrock.py's `from botocore.exceptions import ...` -- every typed call
+# site stays off boto3/botocore's untyped surface via S3ClientProtocol, not a
+# repo-wide untyped-imports allowance.
 [[tool.mypy.overrides]]
 module = ["boto3", "boto3.*", "botocore.*"]
 ignore_missing_imports = true

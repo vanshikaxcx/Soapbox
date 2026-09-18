@@ -23,6 +23,7 @@ from services.application.ports.core import (
     StateStore,
     Write,
     read,
+    reject_duplicate_keys,
 )
 from services.application.ports.id_generator import IdGenerator
 from services.application.ports.speech import (
@@ -51,4 +52,5 @@ __all__ = [
     "TranscribeUrlSigner",
     "Write",
     "read",
+    "reject_duplicate_keys",
 ]

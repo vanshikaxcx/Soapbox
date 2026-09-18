@@ -125,7 +125,7 @@ class OperatorUseCases[ScenarioT]:
         from services.domain.transitions import DispatchState
 
         dispatched = 0
-        for key in self._store.keys_matching("PURCHASE#"):  # type: ignore[attr-defined]
+        for key in self._store.keys_matching("PURCHASE#"):
             if "ATTEMPT#" not in key[1]:
                 continue
             attempt = self._store.get(key)
