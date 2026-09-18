@@ -127,12 +127,18 @@ class FakeMerchant(Merchant):
 
 
 def fee(merchant: str, *, subtotal_paise: int, delivery_paise: int | None = 0) -> RawFeeAssessment:
+    # platform/other default to a known 0, not None: None means "this fee was
+    # never assessed at all", which correctly makes the whole total UNKNOWN
+    # (see test_two_estimated_baskets_are_not_comparable-style honesty rule)
+    # -- these two are known-zero fees for tests that aren't about that rule.
     return RawFeeAssessment(
         merchant=merchant,
         location=LOCATION,
         line_hash="irrelevant",
         subtotal_paise=subtotal_paise,
         delivery_fee_paise=delivery_paise,
+        platform_fee_paise=0,
+        other_fees_paise=0,
         completeness="estimated",
         fetch_time=NOW,
     )
@@ -314,6 +320,42 @@ def test_run_comparison_picks_a_winner_when_one_basket_has_no_open_charges() -> 
         id_factory=SequentialIds(), registry={"blinkit": blinkit, "zepto": zepto},
     )
     assert outcome.winner_merchant_id == "blinkit"
+
+
+def test_a_fee_component_the_merchant_never_assessed_makes_the_total_unknown() -> None:
+    """Confirmed live (2026-09-18): Blinkit's real `assess_fees` returns
+    `platform_fee_paise=None` (unassessed, not zero -- see `fees.py`).
+    Silently dropping that `None` from the charges list used to let the
+    total compute as "estimated" with the platform fee missing entirely
+    rather than accounted for. A basket with a truly unassessed fee
+    component must never look more complete than it is.
+    """
+    item = an_item(name="rice", quantity=Quantity.of(5, Unit.KG))
+    intent = an_intent(items=(item,))
+    blinkit = FakeMerchant(
+        "blinkit",
+        catalog={"rice": [raw_observation(merchant="blinkit", sku="b-rice", name="Rice",
+                                            price_paise=50_000)]},
+        fee=RawFeeAssessment(
+            merchant="blinkit",
+            location=LOCATION,
+            line_hash="irrelevant",
+            subtotal_paise=50_000,
+            delivery_fee_paise=3_000,
+            platform_fee_paise=None,  # never assessed -- not the same as zero
+            completeness="estimated",
+            fetch_time=NOW,
+        ),
+    )
+    outcome = run_comparison(
+        intent=intent, location=LOCATION, mode=Mode.LIVE, now=NOW,
+        id_factory=SequentialIds(), registry={"blinkit": blinkit},
+    )
+    basket = outcome.results[0].basket
+    assert basket is not None
+    assert basket.totals.confidence == "unknown"
+    assert basket.totals.total is None
+    assert "other" in basket.totals.unknown_charges
 
 
 def test_run_comparison_reports_partial_coverage_not_a_failed_search() -> None:

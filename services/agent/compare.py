@@ -361,12 +361,15 @@ class ComparisonOutcome(Record):
     budget_check: str = BudgetCheck.UNKNOWN.value
 
 
-def _domain_charge(
-    kind: ChargeKind, amount_paise: int | None, confidence: Confidence
-) -> Charge | None:
-    if amount_paise is None:
-        return None
-    if confidence is Confidence.UNKNOWN:
+def _domain_charge(kind: ChargeKind, amount_paise: int | None, confidence: Confidence) -> Charge:
+    # A fee the merchant didn't report at all (e.g. Blinkit's platform fee --
+    # fees.py deliberately returns None for it) is unknown, never zero.
+    # Dropping it here would let `compute_totals` silently treat an unpriced
+    # fee as if it didn't exist -- confirmed live: Blinkit's real
+    # platform_fee_paise=None was disappearing instead of making the total's
+    # confidence UNKNOWN. See `docs/specs/WP-06-search-comparison-basket-
+    # repair.md`'s addendum for the live check that found this.
+    if amount_paise is None or confidence is Confidence.UNKNOWN:
         return Charge.unknown_charge(kind)
     return Charge.known_charge(kind, Money.paise(amount_paise), confidence)
 
@@ -388,15 +391,11 @@ def to_domain_fee_assessment(
         if raw.completeness == "unknown"
         else Confidence.ESTIMATED
     )
-    charges = [
-        charge
-        for charge in (
-            _domain_charge(ChargeKind.DELIVERY, raw.delivery_fee_paise, confidence),
-            _domain_charge(ChargeKind.OTHER, raw.platform_fee_paise, confidence),
-            _domain_charge(ChargeKind.HANDLING, raw.other_fees_paise, confidence),
-        )
-        if charge is not None
-    ]
+    charges = (
+        _domain_charge(ChargeKind.DELIVERY, raw.delivery_fee_paise, confidence),
+        _domain_charge(ChargeKind.OTHER, raw.platform_fee_paise, confidence),
+        _domain_charge(ChargeKind.HANDLING, raw.other_fees_paise, confidence),
+    )
     return DomainFeeAssessment(
         merchant_id=raw.merchant,
         location=location,
