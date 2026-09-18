@@ -3,6 +3,7 @@
 Fixture observations always carry mode=FIXTURE and must never be ranked or
 displayed alongside live observations (SPEC honesty rules).
 """
+
 from __future__ import annotations
 
 import json

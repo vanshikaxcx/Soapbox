@@ -3,6 +3,7 @@
 Agents propose; this tool performs the deterministic search and returns typed,
 schema-constrained results. It never authorizes payment or approval actions.
 """
+
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
@@ -42,8 +43,7 @@ def search_merchants(
     results: list[Observation] = []
     with ThreadPoolExecutor(max_workers=max(len(registry), 1)) as executor:
         futures = [
-            executor.submit(merchant.search, loc, query, deadline)
-            for merchant in registry.values()
+            executor.submit(merchant.search, loc, query, deadline) for merchant in registry.values()
         ]
         for future in futures:
             outcome = future.result()

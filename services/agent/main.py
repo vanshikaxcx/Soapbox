@@ -3,6 +3,7 @@
 Called only by workflow task Lambdas via a rotated server-only token, never
 directly by the browser.
 """
+
 from __future__ import annotations
 
 import threading
@@ -27,9 +28,7 @@ def _warm_blinkit_location() -> None:
     per-pincode lock inside warm_location() rather than racing it — see
     blinkit.py's module docstring.
     """
-    threading.Thread(
-        target=warm_location, args=(TESTED_LOCALITY_PINCODE,), daemon=True
-    ).start()
+    threading.Thread(target=warm_location, args=(TESTED_LOCALITY_PINCODE,), daemon=True).start()
 
 
 @app.get("/health")

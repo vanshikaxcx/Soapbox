@@ -22,6 +22,7 @@ parallel) actually needs. Two tasks for the *same* engine still serialize
 on that engine's one thread; that's an acceptable, narrower constraint than
 losing cross-engine concurrency entirely.
 """
+
 from __future__ import annotations
 
 import atexit
@@ -30,7 +31,6 @@ import subprocess
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import TypeVar
 
 from playwright.sync_api import Browser, Playwright, sync_playwright
 
@@ -38,8 +38,6 @@ LIGHTPANDA_HOST = "127.0.0.1"
 LIGHTPANDA_PORT = 9222
 _LIGHTPANDA_CONNECT_RETRIES = 10
 _LIGHTPANDA_CONNECT_RETRY_DELAY_SECONDS = 0.3
-
-T = TypeVar("T")
 
 # One single-worker executor per engine == one dedicated thread per engine.
 # Everything that touches that engine's Playwright objects must run inside
@@ -56,7 +54,7 @@ _browsers: dict[str, Browser] = {}
 _lightpanda_process: subprocess.Popen[bytes] | None = None
 
 
-def run_on_engine_thread(engine: str, fn: Callable[[], T]) -> T:
+def run_on_engine_thread[T](engine: str, fn: Callable[[], T]) -> T:
     """Run `fn` on the single thread that owns `engine`'s Playwright driver.
 
     Blocks the calling thread until `fn` completes. Any exception raised by
@@ -74,6 +72,7 @@ def _playwright_instance(engine: str) -> Playwright:
     if pw is None:
         pw = sync_playwright().start()
         _playwright[engine] = pw
+
         # pw.stop() is itself a Playwright call and must run on the same
         # thread that started it, not atexit's default (the main thread).
         # Best-effort: Python's own executor-shutdown atexit hook can run

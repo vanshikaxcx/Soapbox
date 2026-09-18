@@ -12,6 +12,7 @@ the latency win (no rendering/CSS/image/font cost). Both engines are
 long-lived per container (see browser_pool.py); only the BrowserContext is
 per-task.
 """
+
 from __future__ import annotations
 
 from abc import abstractmethod

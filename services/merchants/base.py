@@ -1,4 +1,5 @@
 """Merchant port. Adapters implement this; application code depends only on it."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

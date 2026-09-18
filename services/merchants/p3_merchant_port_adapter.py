@@ -58,6 +58,7 @@ confirm, not just this file's opinion:
    than silently fabricating an answer; if it's not wired up, or the hash
    is unrecognized, it returns a typed error instead of guessing.
 """
+
 from __future__ import annotations
 
 import hashlib

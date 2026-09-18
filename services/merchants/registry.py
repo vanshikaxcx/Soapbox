@@ -1,4 +1,5 @@
 """Merchant registry. Single place that maps a merchant name to its connector."""
+
 from __future__ import annotations
 
 from .base import Merchant
