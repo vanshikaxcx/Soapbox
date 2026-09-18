@@ -574,6 +574,34 @@ def test_a_cancellation_with_no_reasons_still_returns_rather_than_raises() -> No
     assert outcome.key == KEY
 
 
+def test_a_bare_conditional_check_failure_is_returned_rather_than_raised() -> None:
+    """``transact`` only ever issues ``TransactWriteItems``, which reports a
+    rejected guard as a cancellation -- so this single-item error is not expected
+    here at all.
+
+    It is still mapped, and still tested, because "cannot happen" is exactly the
+    assumption that makes property 1 fail silently if it turns out to be wrong:
+    no caller of ``transact`` has an ``except``, so the cost of being mistaken is
+    every use case breaking at once. Mapped through the same re-check as a
+    reasons-less cancellation rather than by assuming which write it concerned,
+    which is only knowable when there is exactly one.
+    """
+    with dynamo() as (store, client):
+        assert store.transact([put(KEY, preparation())]) is None
+        writes = [
+            put(OTHER, preparation()),
+            put(KEY, preparation(), condition=Condition.MUST_NOT_EXIST),
+        ]
+        with patch.object(
+            client,
+            "transact_write_items",
+            side_effect=cancellation(None, code="ConditionalCheckFailedException"),
+        ):
+            outcome = store.transact(writes)
+    assert isinstance(outcome, ConditionFailed)
+    assert outcome.key == KEY
+
+
 def test_a_cancellation_that_is_not_a_guard_is_raised_not_returned() -> None:
     """A conflict is not a lost race.
 

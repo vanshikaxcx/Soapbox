@@ -18,7 +18,7 @@ sleep-based and flaky, or they only ever test the sequential case.
 from __future__ import annotations
 
 import copy
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 
 from services.application.ports import (
@@ -26,6 +26,7 @@ from services.application.ports import (
     Condition,
     ConditionFailed,
     Key,
+    PublishRejected,
     Write,
     reject_duplicate_keys,
 )
@@ -36,6 +37,7 @@ from services.application.ports.speech import (
 )
 from services.domain.catalog import Observation
 from services.domain.errors import DomainError
+from services.domain.jobs import OutboxEvent
 from services.domain.money import Charge
 
 
@@ -128,6 +130,33 @@ class MemoryStore:
 
     def snapshot(self) -> dict[Key, object]:
         return copy.copy(self._items)
+
+
+class RecordingEventBus:
+    """An event bus that keeps what it was given and refuses what it is told to.
+
+    ``refuse`` is the important half. EventBridge reports a rejected entry
+    inside a successful response, so the failure a publisher most needs to
+    survive is one that never raises -- and a fake that only ever accepted
+    could not express it at all.
+    """
+
+    def __init__(self, *, refuse: dict[str, str] | None = None) -> None:
+        self.published: list[OutboxEvent] = []
+        self.batches: list[list[OutboxEvent]] = []
+        #: event id -> the error code the bus should report for it.
+        self.refuse = dict(refuse or {})
+
+    def publish(self, events: Sequence[OutboxEvent]) -> list[PublishRejected]:
+        self.batches.append(list(events))
+        rejected: list[PublishRejected] = []
+        for event in events:
+            error_code = self.refuse.get(event.event_id)
+            if error_code is None:
+                self.published.append(event)
+            else:
+                rejected.append(PublishRejected(event_id=event.event_id, error_code=error_code))
+        return rejected
 
 
 class AllowAllPolicy:
@@ -228,6 +257,7 @@ __all__ = [
     "FixedTranscribeUrlSigner",
     "MemoryAudioSink",
     "MemoryStore",
+    "RecordingEventBus",
     "ScriptedMerchant",
     "ScriptedSpeechSynthesizer",
     "SequentialIds",

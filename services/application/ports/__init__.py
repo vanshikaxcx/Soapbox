@@ -25,6 +25,7 @@ from services.application.ports.core import (
     read,
     reject_duplicate_keys,
 )
+from services.application.ports.events import EventBus, PublishRejected
 from services.application.ports.id_generator import IdGenerator
 from services.application.ports.speech import (
     SpeechSynthesisError,
@@ -39,6 +40,7 @@ __all__ = [
     "Clock",
     "Condition",
     "ConditionFailed",
+    "EventBus",
     "IdFactory",
     "IdGenerator",
     "Key",
@@ -47,6 +49,7 @@ __all__ = [
     "SpeechSynthesisError",
     "SpeechSynthesisResult",
     "SpeechSynthesizer",
+    "PublishRejected",
     "StateStore",
     "TranscribeSessionUrl",
     "TranscribeUrlSigner",

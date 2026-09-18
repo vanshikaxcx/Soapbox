@@ -251,17 +251,24 @@ class DynamoStateStore:
         transaction conflict or a size limit is cancelled too, and reporting one
         of those as "someone else approved first" would tell a shopper a
         confident lie about a request that simply never ran.
+
+        ``ConditionalCheckFailedException`` is a single-item error and
+        ``transact`` only ever issues ``TransactWriteItems``, so it is not
+        expected here at all. It is still mapped, because the cost of being
+        wrong about that is every caller breaking at once -- and it is mapped
+        through the same re-check as a reasons-less cancellation rather than by
+        assuming which write it was about, which is only ever knowable when
+        there is exactly one.
         """
         code = str(error.response.get("Error", {}).get("Code", ""))
-        if code == "ConditionalCheckFailedException" and len(writes) == 1:
-            return ConditionFailed(key=writes[0].key, reason=writes[0].reason)
-        if code != "TransactionCanceledException":
+        if code not in {"TransactionCanceledException", "ConditionalCheckFailedException"}:
             return None
         reasons: list[Any] = list(error.response.get("CancellationReasons") or [])
         if not reasons:
-            # A service that cancelled without saying why. Work out which guard
-            # would have rejected rather than raise through a caller with no
-            # ``except`` -- property 1 holds even when the reasons do not arrive.
+            # A service that rejected a guard without saying which. Work out
+            # which one would have failed rather than raise through a caller
+            # with no ``except`` -- property 1 holds even when the reasons do
+            # not arrive.
             return self._recheck(writes)
         for write, reason in zip(writes, reasons, strict=False):
             if str(reason.get("Code", "")) == "ConditionalCheckFailed":
