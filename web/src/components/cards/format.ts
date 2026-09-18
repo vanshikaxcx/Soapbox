@@ -33,3 +33,19 @@ export function formatQuantity({ value_base, dimension }: ExtractedQuantity): st
       return value_base === 1 ? "1 pc" : `${value_base} pcs`;
   }
 }
+
+/** Coarse relative time for the usual-basket freshness badge - not a countdown, just "how long ago." */
+export function formatRelativeTime(iso: string, now: number): string {
+  const minutes = Math.round((now - new Date(iso).getTime()) / 60_000);
+  if (minutes < 1) {
+    return "just now";
+  }
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+  return `${Math.round(hours / 24)}d ago`;
+}

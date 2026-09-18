@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fakeExtractFromText } from "./fixtureExtractor";
+import { fakeExtractFromImage, fakeExtractFromText } from "./fixtureExtractor";
 
 function sequentialIds(): () => string {
   let n = 0;
@@ -54,6 +54,25 @@ describe("fakeExtractFromText", () => {
     expect(outcome.items).toHaveLength(4);
     expect(outcome.unresolved).toEqual([
       { raw_fragment: "1 kg pepper", reason_code: "item_limit_exceeded", reason_detail: "at most 4 items are supported per request" },
+    ]);
+  });
+});
+
+describe("fakeExtractFromImage", () => {
+  it("resolves a known fixture image to its canned items", () => {
+    const outcome = fakeExtractFromImage(new Uint8Array([42]), sequentialIds());
+    expect(outcome.unresolved).toEqual([]);
+    expect(outcome.items).toEqual([
+      { item_id: "id-1", name: "milk", quantity: { value_base: 1000, dimension: "volume" }, hard_attributes: {}, flexibility: "exact_only" },
+      { item_id: "id-2", name: "eggs", quantity: { value_base: 6, dimension: "count" }, hard_attributes: {}, flexibility: "exact_only" },
+    ]);
+  });
+
+  it("reports extraction_unavailable for any image that isn't a known fixture, never a guess", () => {
+    const outcome = fakeExtractFromImage(new Uint8Array([1, 2, 3]), sequentialIds());
+    expect(outcome.items).toEqual([]);
+    expect(outcome.unresolved).toEqual([
+      { raw_fragment: "<image>", reason_code: "extraction_unavailable", reason_detail: "no matching fixture for this image" },
     ]);
   });
 });

@@ -48,6 +48,42 @@ function toBaseUnits(
   }
 }
 
+// P2's real fake backend is "a content-hash-keyed fixture table for images"
+// (docs/specs/WP-05-extraction-contract-p2.md) - this mirrors that exact
+// shape with a trivial checksum instead of a real content hash. An
+// unmatched image (i.e. any real photo) honestly reports
+// extraction_unavailable, never a guess.
+const IMAGE_FIXTURES: Record<number, ReadonlyArray<Omit<ExtractedItem, "item_id">>> = {
+  42: [
+    { name: "milk", quantity: { value_base: 1000, dimension: "volume" }, hard_attributes: {}, flexibility: "exact_only" },
+    { name: "eggs", quantity: { value_base: 6, dimension: "count" }, hard_attributes: {}, flexibility: "exact_only" },
+  ],
+};
+
+function checksum(bytes: Uint8Array): number {
+  let sum = 0;
+  for (const byte of bytes) {
+    sum += byte;
+  }
+  return sum % 1000;
+}
+
+export function fakeExtractFromImage(
+  bytes: Uint8Array,
+  newId: () => string = () => crypto.randomUUID(),
+): ExtractionOutcome {
+  const fixture = IMAGE_FIXTURES[checksum(bytes)];
+  if (fixture === undefined) {
+    return {
+      items: [],
+      unresolved: [
+        { raw_fragment: "<image>", reason_code: "extraction_unavailable", reason_detail: "no matching fixture for this image" },
+      ],
+    };
+  }
+  return { items: fixture.map((item) => ({ ...item, item_id: newId() })), unresolved: [] };
+}
+
 export function fakeExtractFromText(
   transcript: string,
   newId: () => string = () => crypto.randomUUID(),

@@ -93,7 +93,7 @@ describe("useConversation", () => {
     );
   });
 
-  it("answering a stale question - already replaced/cleared - is a no-op", () => {
+  it("answering a stale question - already replaced/cleared - surfaces a notice instead of silently doing nothing", () => {
     const respond: ConversationResponder = vi.fn().mockResolvedValue({
       turn: { id: "a1", role: "assistant", text: "Got it." },
     });
@@ -106,6 +106,24 @@ describe("useConversation", () => {
 
     expect(respond).not.toHaveBeenCalled();
     expect(result.current.turns).toHaveLength(0);
+    expect(result.current.staleNotice).not.toBeNull();
+  });
+
+  it("clears the stale notice on the next submit", () => {
+    const respond: ConversationResponder = vi.fn().mockResolvedValue({
+      turn: { id: "a1", role: "assistant", text: "Got it." },
+    });
+    const { result } = renderHook(() => useConversation(respond, { newId: sequentialIds() }));
+
+    act(() => {
+      result.current.answerQuestion("o1");
+    });
+    expect(result.current.staleNotice).not.toBeNull();
+
+    act(() => {
+      result.current.submit("2 litres of milk");
+    });
+    expect(result.current.staleNotice).toBeNull();
   });
 
   it("on failure, keeps the shopper's turn visible, surfaces the error, and re-enables submission", async () => {

@@ -21,6 +21,8 @@ export interface UseConversationResult {
   activeQuestion: ConversationQuestion | null;
   submitting: boolean;
   error: ApiError | null;
+  /** A stale answerQuestion click - not a network/server error, so kept separate from `error`. Cleared on the next submit. */
+  staleNotice: string | null;
   /**
    * The ONE canonical path: typing today, a later voice feature's final
    * transcript calls this exact function too - never a separate call site.
@@ -44,6 +46,7 @@ export function useConversation(
   const [activeQuestion, setActiveQuestion] = useState<ConversationQuestion | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
+  const [staleNotice, setStaleNotice] = useState<string | null>(null);
   // A second guard alongside the `submitting` state: state drives the UI
   // (disabling the send/option buttons), but two synchronous calls to
   // `submit` before React re-renders would both still read the same
@@ -62,6 +65,7 @@ export function useConversation(
       setTurns((prev) => [...prev, shopperTurn]);
       setActiveQuestion(null);
       setError(null);
+      setStaleNotice(null);
       setSubmitting(true);
 
       void respond(trimmed, [...turns, shopperTurn])
@@ -83,9 +87,11 @@ export function useConversation(
   const answerQuestion = useCallback(
     (optionId: string) => {
       const option = activeQuestion?.options.find((candidate) => candidate.id === optionId);
-      // A stale click - the question was already replaced or answered - is a
-      // no-op, not an error: there is nothing left to answer.
+      // A stale click - the question was already replaced or answered.
+      // Nothing to submit, but the shopper should know why their tap did
+      // nothing rather than it silently going nowhere.
       if (option === undefined) {
+        setStaleNotice("That question isn't current anymore — go ahead and type your answer instead.");
         return;
       }
       submit(option.label);
@@ -93,5 +99,5 @@ export function useConversation(
     [activeQuestion, submit],
   );
 
-  return { turns, activeQuestion, submitting, error, submit, answerQuestion };
+  return { turns, activeQuestion, submitting, error, staleNotice, submit, answerQuestion };
 }
