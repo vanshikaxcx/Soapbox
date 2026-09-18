@@ -16,11 +16,18 @@ export interface NoticeCardProps {
  */
 export function NoticeCard({ tone, title, body, action }: NoticeCardProps) {
   return (
-    <div className={`pp-card pp-notice pp-notice--${tone}`} role={tone === "warning" ? "alert" : "status"}>
+    <div
+      className={`pp-card pp-notice pp-notice--${tone}`}
+      role={tone === "warning" ? "alert" : "status"}
+    >
       <p className="pp-notice__title">{title}</p>
       {body !== undefined && <p className="pp-notice__body">{body}</p>}
       {action !== undefined && (
-        <button type="button" className="pp-button pp-button--secondary" onClick={action.onClick}>
+        <button
+          type="button"
+          className="pp-button pp-button--secondary"
+          onClick={action.onClick}
+        >
           {action.label}
         </button>
       )}

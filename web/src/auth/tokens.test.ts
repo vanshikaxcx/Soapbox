@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { clearTokens, isExpired, readTokens, writeTokens, type StoredTokens } from "./tokens";
+import {
+  clearTokens,
+  isExpired,
+  readTokens,
+  writeTokens,
+  type StoredTokens,
+} from "./tokens";
 import { fakeStorage } from "../test/fakeStorage";
 
 const baseTokens: StoredTokens = {
@@ -31,11 +37,15 @@ describe("token storage", () => {
 
 describe("isExpired", () => {
   it("is false comfortably before expiry", () => {
-    expect(isExpired(baseTokens, () => baseTokens.expiresAt - 60_000)).toBe(false);
+    expect(isExpired(baseTokens, () => baseTokens.expiresAt - 60_000)).toBe(
+      false,
+    );
   });
 
   it("is true within the skew window before the nominal expiry", () => {
-    expect(isExpired(baseTokens, () => baseTokens.expiresAt - 5_000)).toBe(true);
+    expect(isExpired(baseTokens, () => baseTokens.expiresAt - 5_000)).toBe(
+      true,
+    );
   });
 
   it("is true after expiry", () => {

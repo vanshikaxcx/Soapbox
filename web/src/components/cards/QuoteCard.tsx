@@ -16,7 +16,11 @@ export interface QuoteCardProps {
   disabled?: boolean;
 }
 
-export function QuoteCard({ quote, onApprove, disabled = false }: QuoteCardProps) {
+export function QuoteCard({
+  quote,
+  onApprove,
+  disabled = false,
+}: QuoteCardProps) {
   const [submitting, setSubmitting] = useState(false);
   const busy = disabled || submitting;
 
@@ -29,7 +33,10 @@ export function QuoteCard({ quote, onApprove, disabled = false }: QuoteCardProps
   };
 
   return (
-    <section className="pp-card pp-quote" aria-label={`Exact quote from ${quote.seller}`}>
+    <section
+      className="pp-card pp-quote"
+      aria-label={`Exact quote from ${quote.seller}`}
+    >
       <SimulatedCheckoutNotice />
       <h3>{quote.seller}</h3>
       <ul className="pp-quote__lines">
@@ -55,7 +62,9 @@ export function QuoteCard({ quote, onApprove, disabled = false }: QuoteCardProps
           <dd>{quote.deliveryTerms}</dd>
         </div>
       </dl>
-      <p className="pp-quote__expiry">Quote expires {formatTime(quote.expiresAt)}</p>
+      <p className="pp-quote__expiry">
+        Quote expires {formatTime(quote.expiresAt)}
+      </p>
       <button
         type="button"
         className="pp-button pp-button--primary pp-button--approve"
@@ -63,7 +72,9 @@ export function QuoteCard({ quote, onApprove, disabled = false }: QuoteCardProps
         disabled={busy}
         aria-busy={submitting}
       >
-        {submitting ? "Approving…" : `Approve simulated ${formatPaise(quote.totalPaise)}`}
+        {submitting
+          ? "Approving…"
+          : `Approve simulated ${formatPaise(quote.totalPaise)}`}
       </button>
     </section>
   );

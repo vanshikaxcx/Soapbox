@@ -27,11 +27,14 @@ export function memoryKeyStore(seed?: Record<string, string>): KeyStore {
  * they are starting a fresh purchase. Falls back to memory when storage is
  * unavailable (private mode, blocked cookies).
  */
-export function sessionKeyStore(storage: Storage | undefined = globalThis.sessionStorage): KeyStore {
+export function sessionKeyStore(
+  storage: Storage | undefined = globalThis.sessionStorage,
+): KeyStore {
   if (storage === undefined) {
     return memoryKeyStore();
   }
-  const namespaced = (intentId: string): string => `proofpath.idempotency.${intentId}`;
+  const namespaced = (intentId: string): string =>
+    `proofpath.idempotency.${intentId}`;
   try {
     storage.setItem(namespaced("probe"), "1");
     storage.removeItem(namespaced("probe"));
@@ -45,7 +48,9 @@ export function sessionKeyStore(storage: Storage | undefined = globalThis.sessio
   };
 }
 
-export function newIdempotencyKey(randomUuid: () => string = () => crypto.randomUUID()): IdempotencyKey {
+export function newIdempotencyKey(
+  randomUuid: () => string = () => crypto.randomUUID(),
+): IdempotencyKey {
   return randomUuid() as IdempotencyKey;
 }
 

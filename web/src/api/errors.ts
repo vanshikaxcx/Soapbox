@@ -80,7 +80,10 @@ export class ApiError extends Error {
   readonly details: Record<string, unknown> | null | undefined;
 
   constructor(init: ApiErrorInit) {
-    super(init.message, init.cause === undefined ? undefined : { cause: init.cause });
+    super(
+      init.message,
+      init.cause === undefined ? undefined : { cause: init.cause },
+    );
     this.name = "ApiError";
     this.kind = init.kind;
     this.code = init.code;
@@ -104,7 +107,10 @@ export function isApiError(value: unknown): value is ApiError {
  * from "your expected_version is behind" - so an unlabelled 409 stays
  * `conflict`, the more conservative of the two for the UI.
  */
-export function kindForFailure(status: number, code: ServerErrorCode | undefined): ApiErrorKind {
+export function kindForFailure(
+  status: number,
+  code: ServerErrorCode | undefined,
+): ApiErrorKind {
   if (code !== undefined) {
     const byCode = CODE_TO_KIND[code];
     if (byCode !== undefined) {

@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, isApiError } from "../api/errors";
 import type { ApiResult } from "../api/client";
-import { pollUntilTerminal, type PollPolicy, type Scheduler, type Visibility } from "../api/polling";
+import {
+  pollUntilTerminal,
+  type PollPolicy,
+  type Scheduler,
+  type Visibility,
+} from "../api/polling";
 import type { AsyncState } from "./asyncState";
 
 export interface UseAsyncResourceOptions<T> {
@@ -58,7 +63,9 @@ export function useAsyncResource<T>(
     const classifyOrDefault = (data: T): AsyncState<T> => {
       lastDataRef.current = data;
       const kind = classify?.(data) ?? "success";
-      return kind === "success" ? { status: "success", data } : { status: kind, data };
+      return kind === "success"
+        ? { status: "success", data }
+        : { status: kind, data };
     };
 
     async function run(): Promise<void> {
@@ -76,12 +83,16 @@ export function useAsyncResource<T>(
               setState(classifyOrDefault(result.data));
             },
           });
-          if (outcome.status === "deadline_exceeded" && outcome.last === undefined) {
+          if (
+            outcome.status === "deadline_exceeded" &&
+            outcome.last === undefined
+          ) {
             setState({
               status: "error",
               error: new ApiError({
                 kind: "timeout",
-                message: "Timed out waiting for this to finish. You can try again.",
+                message:
+                  "Timed out waiting for this to finish. You can try again.",
               }),
             });
           }
@@ -97,7 +108,10 @@ export function useAsyncResource<T>(
         }
         const apiError = isApiError(error)
           ? error
-          : new ApiError({ kind: "server", message: "Something unexpected happened." });
+          : new ApiError({
+              kind: "server",
+              message: "Something unexpected happened.",
+            });
         setRequestId(apiError.requestId);
         if (apiError.kind === "expired") {
           setState({ status: "expired", error: apiError });
@@ -105,7 +119,11 @@ export function useAsyncResource<T>(
           (apiError.kind === "stale_version" || apiError.kind === "conflict") &&
           lastDataRef.current !== undefined
         ) {
-          setState({ status: "stale", data: lastDataRef.current, error: apiError });
+          setState({
+            status: "stale",
+            data: lastDataRef.current,
+            error: apiError,
+          });
         } else {
           setState({ status: "error", error: apiError });
         }

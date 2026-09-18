@@ -19,7 +19,13 @@ const ApiContext = createContext<ApiContextValue | null>(null);
  * avoid copying it into multiple local stores"). Traces feed the diagnostic
  * bar; nothing else reads them, so a slow/dropped trace never affects a route.
  */
-export function ApiProvider({ baseUrl, children }: { baseUrl: string; children: ReactNode }) {
+export function ApiProvider({
+  baseUrl,
+  children,
+}: {
+  baseUrl: string;
+  children: ReactNode;
+}) {
   const { getAccessToken } = useAuth();
   const [traces, setTraces] = useState<RequestTrace[]>([]);
 
@@ -31,12 +37,16 @@ export function ApiProvider({ baseUrl, children }: { baseUrl: string; children: 
       new ApiClient({
         baseUrl,
         accessToken: getAccessToken,
-        onTrace: (trace) => setTraces((prev) => [trace, ...prev].slice(0, MAX_TRACES)),
+        onTrace: (trace) =>
+          setTraces((prev) => [trace, ...prev].slice(0, MAX_TRACES)),
       }),
     [baseUrl, getAccessToken],
   );
 
-  const value = useMemo<ApiContextValue>(() => ({ client, traces }), [client, traces]);
+  const value = useMemo<ApiContextValue>(
+    () => ({ client, traces }),
+    [client, traces],
+  );
   return <ApiContext.Provider value={value}>{children}</ApiContext.Provider>;
 }
 

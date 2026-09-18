@@ -16,7 +16,12 @@ function authenticatedStorage(): Storage {
   const storage = fakeStorage();
   storage.setItem(
     "proofpath.auth.tokens",
-    JSON.stringify({ accessToken: "a", idToken: "i", refreshToken: "r", expiresAt: Date.now() + 60_000 }),
+    JSON.stringify({
+      accessToken: "a",
+      idToken: "i",
+      refreshToken: "r",
+      expiresAt: Date.now() + 60_000,
+    }),
   );
   return storage;
 }
@@ -24,10 +29,18 @@ function authenticatedStorage(): Storage {
 describe("App", () => {
   it("renders the authenticated shell with a working skip link and primary nav", async () => {
     render(
-      <App authDeps={{ config, storage: authenticatedStorage(), location: { search: "", pathname: "/" } }} />,
+      <App
+        authDeps={{
+          config,
+          storage: authenticatedStorage(),
+          location: { search: "", pathname: "/" },
+        }}
+      />,
     );
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "ProofPath" })).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "ProofPath" })).toBeTruthy(),
+    );
 
     const skipLink = screen.getByText("Skip to main content");
     expect(skipLink.getAttribute("href")).toBe("#pp-main");
@@ -38,9 +51,17 @@ describe("App", () => {
 
   it("does not show the diagnostic bar by default", async () => {
     render(
-      <App authDeps={{ config, storage: authenticatedStorage(), location: { search: "", pathname: "/" } }} />,
+      <App
+        authDeps={{
+          config,
+          storage: authenticatedStorage(),
+          location: { search: "", pathname: "/" },
+        }}
+      />,
     );
-    await waitFor(() => expect(screen.getByRole("heading", { name: "ProofPath" })).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "ProofPath" })).toBeTruthy(),
+    );
     expect(screen.queryByLabelText("Diagnostic request trace")).toBeNull();
   });
 
@@ -48,7 +69,13 @@ describe("App", () => {
     const redirect = vi.fn();
     render(
       <App
-        authDeps={{ config, storage: fakeStorage(), redirect, location: { search: "", pathname: "/" }, navigate: () => undefined }}
+        authDeps={{
+          config,
+          storage: fakeStorage(),
+          redirect,
+          location: { search: "", pathname: "/" },
+          navigate: () => undefined,
+        }}
       />,
     );
 

@@ -25,9 +25,14 @@ function tokenEndpoint(config: CognitoConfig): string {
   return `https://${config.domain}/oauth2/token`;
 }
 
-async function toTokens(response: Response, now: () => number): Promise<StoredTokens> {
+async function toTokens(
+  response: Response,
+  now: () => number,
+): Promise<StoredTokens> {
   if (!response.ok) {
-    throw new CognitoAuthError(`Cognito token endpoint returned ${response.status}.`);
+    throw new CognitoAuthError(
+      `Cognito token endpoint returned ${response.status}.`,
+    );
   }
   const body = (await response.json()) as TokenResponse;
   return {

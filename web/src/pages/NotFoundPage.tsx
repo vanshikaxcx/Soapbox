@@ -7,7 +7,10 @@ export function NotFoundPage() {
   return (
     <div className="pp-page">
       <h1>Not found</h1>
-      <p>We couldn't find that. It may not exist, or it may not be available to you.</p>
+      <p>
+        We couldn't find that. It may not exist, or it may not be available to
+        you.
+      </p>
     </div>
   );
 }

@@ -45,7 +45,13 @@ export function AsyncStateView<T>({
         )
       );
     case "partial":
-      return <>{renderPartial ? renderPartial(state.data) : children(state.data, true)}</>;
+      return (
+        <>
+          {renderPartial
+            ? renderPartial(state.data)
+            : children(state.data, true)}
+        </>
+      );
     case "success":
       return <>{children(state.data, false)}</>;
     case "stale":
@@ -55,7 +61,9 @@ export function AsyncStateView<T>({
             tone="warning"
             title="This has changed since you last looked"
             body="Someone or something updated this. Refresh to see the current version before acting on it."
-            action={onRetry ? { label: "Refresh", onClick: onRetry } : undefined}
+            action={
+              onRetry ? { label: "Refresh", onClick: onRetry } : undefined
+            }
           />
           {children(state.data, true)}
         </>
@@ -63,7 +71,12 @@ export function AsyncStateView<T>({
     case "expired":
       return <ErrorCard error={state.error} onRetry={undefined} />;
     case "error":
-      return <ErrorCard error={state.error} onRetry={state.error.retryable ? onRetry : undefined} />;
+      return (
+        <ErrorCard
+          error={state.error}
+          onRetry={state.error.retryable ? onRetry : undefined}
+        />
+      );
     default: {
       const exhaustive: never = state;
       return exhaustive;

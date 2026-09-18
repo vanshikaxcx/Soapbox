@@ -29,7 +29,9 @@ function fixedTime(ms: number): () => number {
 
 function tokenResponseBody(overrides: Partial<Record<string, unknown>> = {}) {
   // header.payload.signature with payload {"sub":"user-1","email":"shopper@example.invalid"}
-  const payload = btoa(JSON.stringify({ sub: "user-1", email: "shopper@example.invalid" }));
+  const payload = btoa(
+    JSON.stringify({ sub: "user-1", email: "shopper@example.invalid" }),
+  );
   return {
     access_token: "new-access",
     id_token: `h.${payload}.s`,
@@ -58,7 +60,9 @@ function renderWithProvider(deps: AuthProviderDeps) {
 describe("AuthProvider", () => {
   it("starts unauthenticated when no session exists", async () => {
     renderWithProvider({ storage: fakeStorage() });
-    await waitFor(() => expect(screen.getByTestId("status").textContent).toBe("unauthenticated"));
+    await waitFor(() =>
+      expect(screen.getByTestId("status").textContent).toBe("unauthenticated"),
+    );
   });
 
   it("becomes authenticated immediately from a valid stored session", async () => {
@@ -73,15 +77,24 @@ describe("AuthProvider", () => {
     writeTokens(tokens, storage);
 
     renderWithProvider({ storage, now });
-    await waitFor(() => expect(screen.getByTestId("status").textContent).toBe("authenticated"));
-    expect(screen.getByTestId("email").textContent).toBe("shopper@example.invalid");
+    await waitFor(() =>
+      expect(screen.getByTestId("status").textContent).toBe("authenticated"),
+    );
+    expect(screen.getByTestId("email").textContent).toBe(
+      "shopper@example.invalid",
+    );
   });
 
   it("logout() clears the session and redirects to the Cognito logout URL", async () => {
     const storage = fakeStorage();
     const now = fixedTime(1_000_000);
     writeTokens(
-      { accessToken: "a", idToken: tokenResponseBody().id_token, refreshToken: "r", expiresAt: now() + 60_000 },
+      {
+        accessToken: "a",
+        idToken: tokenResponseBody().id_token,
+        refreshToken: "r",
+        expiresAt: now() + 60_000,
+      },
       storage,
     );
     const redirect = vi.fn();
@@ -99,16 +112,29 @@ describe("AuthProvider", () => {
     }
 
     render(
-      <AuthProvider deps={{ config, storage, now, redirect, location: { search: "", pathname: "/" }, navigate: () => undefined }}>
+      <AuthProvider
+        deps={{
+          config,
+          storage,
+          now,
+          redirect,
+          location: { search: "", pathname: "/" },
+          navigate: () => undefined,
+        }}
+      >
         <LogoutProbe />
       </AuthProvider>,
     );
 
-    await waitFor(() => expect(screen.getByTestId("status").textContent).toBe("authenticated"));
+    await waitFor(() =>
+      expect(screen.getByTestId("status").textContent).toBe("authenticated"),
+    );
     act(() => {
       screen.getByText("logout").click();
     });
-    await waitFor(() => expect(screen.getByTestId("status").textContent).toBe("unauthenticated"));
+    await waitFor(() =>
+      expect(screen.getByTestId("status").textContent).toBe("unauthenticated"),
+    );
     expect(redirect).toHaveBeenCalledTimes(1);
     const url = new URL((redirect.mock.calls[0] as [string])[0]);
     expect(url.host).toBe(config.domain);
@@ -118,7 +144,12 @@ describe("AuthProvider", () => {
     const storage = fakeStorage();
     const now = fixedTime(1_000_000);
     writeTokens(
-      { accessToken: "stale", idToken: "stale", refreshToken: "r", expiresAt: now() - 1 },
+      {
+        accessToken: "stale",
+        idToken: "stale",
+        refreshToken: "r",
+        expiresAt: now() - 1,
+      },
       storage,
     );
     const fetchImpl = vi.fn().mockResolvedValue({
@@ -127,7 +158,9 @@ describe("AuthProvider", () => {
     });
 
     renderWithProvider({ storage, now, fetchImpl });
-    await waitFor(() => expect(screen.getByTestId("status").textContent).toBe("authenticated"));
+    await waitFor(() =>
+      expect(screen.getByTestId("status").textContent).toBe("authenticated"),
+    );
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
@@ -135,20 +168,35 @@ describe("AuthProvider", () => {
     const storage = fakeStorage();
     const now = fixedTime(1_000_000);
     writeTokens(
-      { accessToken: "stale", idToken: "stale", refreshToken: "r", expiresAt: now() - 1 },
+      {
+        accessToken: "stale",
+        idToken: "stale",
+        refreshToken: "r",
+        expiresAt: now() - 1,
+      },
       storage,
     );
-    const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 400, json: () => Promise.resolve({}) });
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: () => Promise.resolve({}),
+    });
 
     renderWithProvider({ storage, now, fetchImpl });
-    await waitFor(() => expect(screen.getByTestId("status").textContent).toBe("expired"));
+    await waitFor(() =>
+      expect(screen.getByTestId("status").textContent).toBe("expired"),
+    );
   });
 
   it("exchanges an authorization-code callback and navigates to the original return path", async () => {
     const storage = fakeStorage();
     storage.setItem(
       "proofpath.auth.pending",
-      JSON.stringify({ codeVerifier: "verifier", state: "state-abc", returnTo: "/purchases/42" }),
+      JSON.stringify({
+        codeVerifier: "verifier",
+        state: "state-abc",
+        returnTo: "/purchases/42",
+      }),
     );
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,
@@ -163,7 +211,9 @@ describe("AuthProvider", () => {
       location: { search: "?code=abc123&state=state-abc", pathname: "/" },
     });
 
-    await waitFor(() => expect(screen.getByTestId("status").textContent).toBe("authenticated"));
+    await waitFor(() =>
+      expect(screen.getByTestId("status").textContent).toBe("authenticated"),
+    );
     expect(navigate).toHaveBeenCalledWith("/purchases/42");
   });
 
@@ -171,7 +221,11 @@ describe("AuthProvider", () => {
     const storage = fakeStorage();
     storage.setItem(
       "proofpath.auth.pending",
-      JSON.stringify({ codeVerifier: "verifier", state: "expected-state", returnTo: "/" }),
+      JSON.stringify({
+        codeVerifier: "verifier",
+        state: "expected-state",
+        returnTo: "/",
+      }),
     );
     const fetchImpl = vi.fn();
 
@@ -181,7 +235,9 @@ describe("AuthProvider", () => {
       location: { search: "?code=abc123&state=wrong-state", pathname: "/" },
     });
 
-    await waitFor(() => expect(screen.getByTestId("status").textContent).toBe("unauthenticated"));
+    await waitFor(() =>
+      expect(screen.getByTestId("status").textContent).toBe("unauthenticated"),
+    );
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
@@ -234,6 +290,8 @@ describe("AuthProvider login()", () => {
 
     const pending = storage.getItem("proofpath.auth.pending");
     expect(pending).not.toBeNull();
-    expect(JSON.parse(pending as string)).toMatchObject({ returnTo: "/searches/1" });
+    expect(JSON.parse(pending as string)).toMatchObject({
+      returnTo: "/searches/1",
+    });
   });
 });

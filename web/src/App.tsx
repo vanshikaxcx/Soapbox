@@ -2,7 +2,8 @@ import { ApiProvider } from "./api/ApiProvider";
 import { AuthProvider, type AuthProviderDeps } from "./auth/AuthContext";
 import { AppRouter } from "./pages/router";
 
-const API_BASE_URL: string = (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "/api";
+const API_BASE_URL: string =
+  (import.meta.env["VITE_API_BASE_URL"] as string | undefined) ?? "/api";
 
 export interface AppProps {
   /** Test-only seam: overrides Cognito config/fetch/storage/redirect without touching real env/network. */

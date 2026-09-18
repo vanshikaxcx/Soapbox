@@ -13,7 +13,9 @@ export interface StoredTokens {
 
 const TOKENS_KEY = "proofpath.auth.tokens";
 
-export function readTokens(storage: Storage = sessionStorage): StoredTokens | null {
+export function readTokens(
+  storage: Storage = sessionStorage,
+): StoredTokens | null {
   const raw = storage.getItem(TOKENS_KEY);
   if (raw === null) {
     return null;
@@ -30,7 +32,8 @@ export function readTokens(storage: Storage = sessionStorage): StoredTokens | nu
     return {
       accessToken: parsed.accessToken,
       idToken: parsed.idToken,
-      refreshToken: typeof parsed.refreshToken === "string" ? parsed.refreshToken : null,
+      refreshToken:
+        typeof parsed.refreshToken === "string" ? parsed.refreshToken : null,
       expiresAt: parsed.expiresAt,
     };
   } catch {
@@ -38,7 +41,10 @@ export function readTokens(storage: Storage = sessionStorage): StoredTokens | nu
   }
 }
 
-export function writeTokens(tokens: StoredTokens, storage: Storage = sessionStorage): void {
+export function writeTokens(
+  tokens: StoredTokens,
+  storage: Storage = sessionStorage,
+): void {
   storage.setItem(TOKENS_KEY, JSON.stringify(tokens));
 }
 
@@ -49,6 +55,9 @@ export function clearTokens(storage: Storage = sessionStorage): void {
 /** A short grace window avoids treating a token as valid on a request that will arrive after it lapses. */
 const EXPIRY_SKEW_MS = 10_000;
 
-export function isExpired(tokens: StoredTokens, now: () => number = Date.now): boolean {
+export function isExpired(
+  tokens: StoredTokens,
+  now: () => number = Date.now,
+): boolean {
   return now() >= tokens.expiresAt - EXPIRY_SKEW_MS;
 }
