@@ -56,33 +56,33 @@ StateStore` keeps working unchanged.
 chooses. The names are close enough to be mistaken for one another, so the
 package docstring says which is which.
 
-## 5. The contract, and why it is a separate file
+## 5. The contract
 
-P3's endpoints are in **`contracts/openapi-p3-purchases.yaml`**, not merged into
-`contracts/openapi.yaml`. Two reasons, both discovered by running WP-00's own
-gate rather than by reading it:
+P3's endpoints live in **`contracts/openapi.yaml`** with everyone else's.
 
-1. `scripts/check-openapi-aws-subset.mjs` asserts **only `GET /health` may be
-   declared**. That is true of the baseline and must relax when any WP adds a
-   route. Relaxing it is P4's call — they have just recorded Gate A evidence
-   against the current rule, and silently editing the gate would invalidate it.
-2. The same gate forbids `nullable`, `allOf`, `oneOf`, `anyOf`, `discriminator`
-   and `const`, because API Gateway and SAM reject them. **P3's original schemas
-   used `nullable` and `allOf` throughout** — they would have parsed fine and
-   then failed to deploy. The separate document is rewritten inside the subset,
-   so it is mergeable verbatim once the path rule moves.
+They were briefly held in a separate `contracts/openapi-p3-purchases.yaml`,
+because WP-00's gate asserted that only `GET /health` could be declared and
+relaxing it was P4's call, not P3's. P4 lifted that in `7d78b89`, and the
+endpoints merged in. The holding document is gone.
 
-The rewrite changed one modelling decision: an amount that is not known is now
-**absent** rather than null, since `nullable` is unavailable. Absent means "we
-could not confirm this" and is never to be read as zero. `purchases_test.py`
-enforces the subset rules directly so this cannot regress.
+What the gate still enforces applied throughout and shaped the schemas:
+`nullable`, `allOf`, `oneOf`, `anyOf`, `discriminator` and `const` are rejected
+by API Gateway and SAM. **P3's original schemas used `nullable` and `allOf`
+throughout** -- they would have parsed fine and then failed to deploy. So an
+amount that is not known is **absent** rather than null: absent means "we could
+not confirm this fee", and it is never to be read as zero.
 
-Two differences from the baseline document still need P4's decision:
+Two decisions P4 made when the endpoints merged:
 
-- **Money.** P3 emits bare integer paise (`total_paise`); the baseline defines a
-  `MoneyINR` object. Unifying is right, but it changes every payload P1 renders.
-- **Error codes.** The baseline's `ErrorBody.code` is a free pattern, where P3's
-  taxonomy has 26 named codes the UI branches on. A shared enum would help P1.
+- **Money is `MoneyINR`**, the baseline's object of integer paise plus currency,
+  not a bare `total_paise` integer. An amount now always travels with the unit
+  it is denominated in.
+- **The 26 domain error codes are documented as `PurchaseErrorCode`** on P3's
+  own response schema, rather than by widening the shared `ErrorBody.code`
+  pattern. The shared envelope stays open to every work package; clients of
+  these endpoints still get an exhaustive list to branch on, which is what
+  keeps four genuinely different 409s from collapsing into one "conflict"
+  screen.
 
 ## 6. Open items
 
@@ -97,6 +97,8 @@ Two differences from the baseline document still need P4's decision:
   `# type: ignore[method-assign]` rather than being restructured away.
 - **Retire `envelope.py`** once the baseline's typed envelopes can carry the
   full error taxonomy (their `code` is `Literal["internal_error"]` today).
+  `PurchaseErrorResponse` in the contract already describes the shape it would
+  need to produce.
 - **P2's branch** needs this same move; §3–§5 are the parts that are not obvious.
 
 ## 7. One real bug found while migrating
