@@ -35,8 +35,9 @@ def test_search_never_calls_warm_location_once_the_deadline_has_elapsed(
 ) -> None:
     monkeypatch.setattr(blinkit_module, "warm_location", _never_call)
     merchant = BlinkitMerchant(evidence_sink=_UnusedEvidenceSink())
-    result = merchant.search(LOCATION, ItemQuery(name="rice", quantity=5.0, unit="kg"),
-                              ELAPSED_DEADLINE)
+    result = merchant.search(
+        LOCATION, ItemQuery(name="rice", quantity=5.0, unit="kg"), ELAPSED_DEADLINE
+    )
     assert result.code is MerchantErrorCode.TIMEOUT  # type: ignore[union-attr]
 
 
@@ -56,9 +57,7 @@ def test_search_still_warms_location_when_time_remains(monkeypatch: pytest.Monke
     # Patch the base connector's browser-touching half out too: this test is
     # only proving *which pincode/whether* warm_location is called, not
     # exercising a real page fetch.
-    monkeypatch.setattr(
-        PlaywrightMerchant, "search", lambda self, location, item, deadline: []
-    )
+    monkeypatch.setattr(PlaywrightMerchant, "search", lambda self, location, item, deadline: [])
     merchant = BlinkitMerchant(evidence_sink=_UnusedEvidenceSink())
     future_deadline = datetime.now(UTC) + timedelta(seconds=45)
     merchant.search(LOCATION, ItemQuery(name="rice", quantity=5.0, unit="kg"), future_deadline)

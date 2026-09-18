@@ -14,6 +14,7 @@ unattempted action here, not a forgotten one. Instead it falls back to
 Zepto's published fee policy applied to the known subtotal; see fees.py for
 the source and the completeness="estimated" labeling this carries.
 """
+
 from __future__ import annotations
 
 import json
@@ -82,9 +83,7 @@ class ZeptoMerchant(PlaywrightMerchant):
                 price_paise = parse_inr_to_paise(price_text)
                 pack_text = require_text(card.query_selector('[data-slot-id="PackSize"] span'))
                 pack_size, unit = parse_pack_size(pack_text) or (item.quantity, item.unit)
-                out_of_stock = (
-                    card.query_selector('[data-is-out-of-stock="true"]') is not None
-                )
+                out_of_stock = card.query_selector('[data-is-out-of-stock="true"]') is not None
                 href = card.get_attribute("href") or ""
                 observations.append(
                     Observation(
@@ -184,4 +183,3 @@ class ZeptoMerchant(PlaywrightMerchant):
             completeness="estimated",
             fetch_time=datetime.now(UTC),
         )
-

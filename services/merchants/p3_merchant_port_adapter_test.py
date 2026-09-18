@@ -24,9 +24,7 @@ class _StubMerchant(Merchant):
     def __init__(self, assessment: FeeAssessment | None) -> None:
         self._assessment = assessment
 
-    def search(
-        self, location: Location, item: ItemQuery, deadline: datetime
-    ) -> list[Observation]:
+    def search(self, location: Location, item: ItemQuery, deadline: datetime) -> list[Observation]:
         raise NotImplementedError
 
     def refresh(self, location: Location, sku: str, deadline: datetime) -> Observation:
@@ -39,9 +37,7 @@ class _StubMerchant(Merchant):
 
 
 def _adapter(assessment: FeeAssessment | None) -> P3MerchantPortAdapter:
-    return P3MerchantPortAdapter(
-        _StubMerchant(assessment), line_lookup=lambda _line_hash: LINES
-    )
+    return P3MerchantPortAdapter(_StubMerchant(assessment), line_lookup=lambda _line_hash: LINES)
 
 
 def test_a_fee_the_merchant_did_not_report_is_an_unknown_charge_not_dropped() -> None:

@@ -1,4 +1,5 @@
 """Evidence sink port. Real implementation (S3) is supplied by P4; local dev uses disk."""
+
 from __future__ import annotations
 
 import os

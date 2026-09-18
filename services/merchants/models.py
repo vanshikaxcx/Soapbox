@@ -1,18 +1,19 @@
 """Shared typed contracts for merchant connectors (SPEC section 6)."""
+
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class Mode(str, Enum):
+class Mode(StrEnum):
     LIVE = "live"
     FIXTURE = "fixture"
 
 
-class ExtractionStatus(str, Enum):
+class ExtractionStatus(StrEnum):
     OK = "ok"
     PARTIAL = "partial"
     BLOCKED = "blocked"
@@ -68,7 +69,7 @@ class FeeAssessment(BaseModel):
     fetch_time: datetime
 
 
-class MerchantErrorCode(str, Enum):
+class MerchantErrorCode(StrEnum):
     TIMEOUT = "timeout"
     CAPTCHA = "captcha"
     BLOCKED = "blocked"

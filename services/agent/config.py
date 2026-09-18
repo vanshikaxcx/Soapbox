@@ -1,4 +1,5 @@
 """Agent service configuration. Pin real values once WP-01's checkpoint runs."""
+
 from __future__ import annotations
 
 import os
