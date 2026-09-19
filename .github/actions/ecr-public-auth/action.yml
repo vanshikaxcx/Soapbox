@@ -1,0 +1,52 @@
+name: Authenticate to ECR Public and pre-pull the pinned SAM build image
+description: >-
+  Assumes the WP-01 CI role via OIDC (see infra/github-oidc.yaml), logs
+  Docker in to the anonymous-pull-rate-limited public.ecr.aws registry, and
+  pre-pulls the pinned SAM build image. Shared by build/web-smoke so the
+  role ARN, region, audience, and image digest live in exactly one place
+  instead of two copies that can drift out of sync. Callers must grant
+  their job `permissions: {id-token: write}` themselves -- a composite
+  action cannot set that on its caller's behalf.
+
+inputs:
+  role-arn:
+    description: ARN of the OIDC-assumable CI role (the PROOFPATH_CI_ECR_ROLE_ARN repository variable).
+    required: true
+  sam-build-image-digest:
+    description: >-
+      Pinned public.ecr.aws/sam/build-python3.12 digest, without the
+      "sha256:" prefix. Must match README.md's documented digest exactly --
+      update both together.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Configure AWS credentials via OIDC (ECR Public auth only)
+      uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+      with:
+        role-to-assume: ${{ inputs.role-arn }}
+        # ECR Public's control-plane API lands only in us-east-1, regardless
+        # of the app's ap-south-1 region (see infra/github-oidc.yaml and
+        # WP-01 AC-01-08); this is not a region-consistency violation.
+        aws-region: us-east-1
+        # Explicit, not relying on this action's own default: confirmed via
+        # a debug job (2026-09-19) that a token requested with no audience
+        # query param at all gets `aud: https://github.com/<org>`, not
+        # `sts.amazonaws.com` -- exactly what infra/github-oidc.yaml's
+        # trust-policy Condition requires and was silently not matching.
+        audience: sts.amazonaws.com
+    - name: Authenticate Docker to ECR Public
+      shell: bash
+      run: aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+    # Confirmed 2026-09-19: `sam build --use-container`'s own image pull is
+    # unreliable in this runner environment -- it intermittently fails with
+    # "Could not find ... image locally and failed to pull it from docker"
+    # even when the `docker login` step above has already succeeded with
+    # valid credentials. A plain `docker pull` of the same pinned digest
+    # does not have this problem; pre-pulling it here lets `sam build` find
+    # the image locally (its own documented fallback path) instead of
+    # depending on its internal pull succeeding.
+    - name: Pre-pull the pinned SAM build image (works around sam build's unreliable internal pull)
+      shell: bash
+      run: docker pull public.ecr.aws/sam/build-python3.12@sha256:${{ inputs.sam-build-image-digest }}

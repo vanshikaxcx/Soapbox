@@ -4,6 +4,15 @@ on:
   pull_request:
   push:
     branches: [main]
+  # NOTE: infra/github-oidc.yaml's CI role trust policy only accepts a
+  # push-shaped token for `ref:refs/heads/main` and a pull_request-shaped
+  # token with `base_ref: main` -- a manual "Run workflow" dispatch on any
+  # other branch produces a push-shaped token for that branch's own ref,
+  # which matches neither trust-policy statement. build/web-smoke's OIDC
+  # step will fail AssumeRoleWithWebIdentity in that case; this is a known,
+  # accepted limitation (broadening the trust policy to accept any branch
+  # ref would also broaden what a future push-triggered run could assume
+  # the role for), not a bug to chase if you hit it via manual dispatch.
   workflow_dispatch:
 
 concurrency:
@@ -21,6 +30,9 @@ env:
   # (https://github.com/aws-actions/setup-sam/releases/tag/v3); no finer concrete semver tag
   # exists in that repository's tag list at the time of pinning.
   PROOFPATH_SAM_VERSION: "1.164.0"
+  # Must match README.md's documented digest exactly -- update both
+  # together. See .github/actions/ecr-public-auth for where this is used.
+  PROOFPATH_SAM_BUILD_IMAGE_DIGEST: "6b977f28341c892f743070ef945b600f1b257b668003720dc3bc9b1839fcd666"
 
 jobs:
   locks-and-generated:
@@ -94,6 +106,9 @@ jobs:
 
   build:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -112,6 +127,21 @@ jobs:
         run: npm --prefix web ci
       - name: Sync Python dependencies (frozen)
         run: uv sync --frozen
+      # Skipped for a pull_request from a fork: a fork's PR run gets a real
+      # OIDC token whose sub/base_ref claims satisfy infra/github-oidc.yaml's
+      # pull_request trust statement (that statement can only scope by
+      # target branch, not fork-vs-same-repo -- GitHub's pull_request token
+      # doesn't expose that distinction), so this guard is what actually
+      # keeps a fork PR from assuming the CI role, rather than relying on
+      # the trust policy alone. A fork PR's build still runs, just without
+      # authenticated ECR Public access -- same unauthenticated-pull
+      # behavior this whole OIDC path exists to avoid for trusted runs.
+      - name: Authenticate to ECR Public and pre-pull the pinned SAM build image
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: ./.github/actions/ecr-public-auth
+        with:
+          role-arn: ${{ vars.PROOFPATH_CI_ECR_ROLE_ARN }}
+          sam-build-image-digest: ${{ env.PROOFPATH_SAM_BUILD_IMAGE_DIGEST }}
       - name: Build web and containerized SAM artifacts
         run: pwsh ./scripts/proofpath.ps1 build
 
@@ -138,6 +168,9 @@ jobs:
 
   web-smoke:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -156,6 +189,14 @@ jobs:
         run: npm --prefix web ci
       - name: Sync Python dependencies (frozen)
         run: uv sync --frozen
+      # See the build job's identical step for why this is skipped for fork
+      # pull_request runs and why the build still proceeds without it.
+      - name: Authenticate to ECR Public and pre-pull the pinned SAM build image
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: ./.github/actions/ecr-public-auth
+        with:
+          role-arn: ${{ vars.PROOFPATH_CI_ECR_ROLE_ARN }}
+          sam-build-image-digest: ${{ env.PROOFPATH_SAM_BUILD_IMAGE_DIGEST }}
       - name: Install pinned Chromium
         run: npm --prefix web exec -- playwright install --with-deps chromium
       - name: Run scaffold and health smoke
