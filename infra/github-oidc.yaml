@@ -18,6 +18,23 @@ Parameters:
     Type: String
     Default: Soapbox
     Description: Repository name. Re-verify this against Open questions item 8's carried-forward migration risk before deploying — if the repository has moved to a different owner/name, update this parameter first.
+  GitHubOrgId:
+    Type: String
+    Default: "191361411"
+    Description: >
+      Numeric GitHub organization/owner ID. Required because this account's
+      GitHub org has "customize the subject claims for GitHub Actions" set
+      to include immutable numeric IDs alongside names -- the real `:sub`
+      claim GitHub issues is `repo:<org>@<GitHubOrgId>/<repo>@<GitHubRepoId>:...`,
+      not the plain `repo:<org>/<repo>:...` this template originally assumed.
+      Confirmed 2026-09-19 via CloudTrail's userIdentity.userName on real,
+      rejected AssumeRoleWithWebIdentity calls from PR #9's CI run -- do not
+      revert to the plain org/repo form without re-verifying this org
+      setting has actually changed back.
+  GitHubRepoId:
+    Type: String
+    Default: "1370358227"
+    Description: Numeric GitHub repository ID; see GitHubOrgId's description for why this is required.
   CreateOidcProvider:
     Type: String
     AllowedValues: ["true", "false"]
@@ -121,7 +138,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}/${GitHubRepo}:ref:refs/heads/main
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}@${GitHubOrgId}/${GitHubRepo}@${GitHubRepoId}:ref:refs/heads/main
           - Effect: Allow
             Principal:
               Federated: !If
@@ -132,7 +149,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}/${GitHubRepo}:pull_request
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}@${GitHubOrgId}/${GitHubRepo}@${GitHubRepoId}:pull_request
                 # Restricts the otherwise event-type-only pull_request `:sub`
                 # shape to PRs whose target/base branch is main -- see this
                 # statement block's leading comment for the full rationale.
