@@ -54,8 +54,18 @@ Resources:
       # behavior in the console/CLI docs at deploy time rather than trusting
       # this comment indefinitely — do not silently drop the field if AWS
       # has changed the requirement by the time this is deployed.
+      #
+      # Fixed 2026-09-19: the value this branch forked with,
+      # 6938fd4d98bab03faadb97b34396831e3780aea, is only 39 hex characters
+      # (AWS::IAM::OIDCProvider requires exactly 40), so CloudFormation
+      # rejects it at early property validation before creating any
+      # resource -- confirmed by attempting this exact deploy. The value
+      # below was computed from GitHub's live TLS chain
+      # (`openssl s_client -servername token.actions.githubusercontent.com
+      # -showcerts`, root CA thumbprint) and matches what is already
+      # deployed on the account's `proofpath-github-oidc` stack.
       ThumbprintList:
-        - 6938fd4d98bab03faadb97b34396831e3780aea
+        - ab9d0263244dd0326eb67015705a667e79cfe998
 
   GitHubActionsEcrPublicAuthRole:
     Type: AWS::IAM::Role
