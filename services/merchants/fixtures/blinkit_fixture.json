@@ -1,0 +1,29 @@
+[
+  {
+    "sku": "blinkit-rice-basmati-5kg",
+    "url": "https://blinkit.com/prn/demo-basmati-rice-5kg/demo-1",
+    "product_name": "India Gate Basmati Rice 5kg",
+    "pack_size": 5,
+    "unit": "kg",
+    "price_paise": 65000,
+    "in_stock": true
+  },
+  {
+    "sku": "blinkit-oil-sunflower-1l",
+    "url": "https://blinkit.com/prn/demo-sunflower-oil-1l/demo-2",
+    "product_name": "Fortune Sunflower Oil 1L",
+    "pack_size": 1,
+    "unit": "l",
+    "price_paise": 15900,
+    "in_stock": true
+  },
+  {
+    "sku": "blinkit-milk-2l",
+    "url": "https://blinkit.com/prn/demo-toned-milk-2l/demo-3",
+    "product_name": "Amul Toned Milk 2L",
+    "pack_size": 2,
+    "unit": "l",
+    "price_paise": 12000,
+    "in_stock": true
+  }
+]
