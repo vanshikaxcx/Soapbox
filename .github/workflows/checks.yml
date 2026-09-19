@@ -123,6 +123,12 @@ jobs:
           # of the app's ap-south-1 region (see infra/github-oidc.yaml and
           # WP-01 AC-01-08); this is not a region-consistency violation.
           aws-region: us-east-1
+          # Explicit, not relying on this action's own default: confirmed via
+          # a debug job (2026-09-19) that a token requested with no audience
+          # query param at all gets `aud: https://github.com/<org>`, not
+          # `sts.amazonaws.com` -- exactly what infra/github-oidc.yaml's
+          # trust-policy Condition requires and was silently not matching.
+          audience: sts.amazonaws.com
       - name: Authenticate Docker to ECR Public
         run: aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
       - name: Build web and containerized SAM artifacts
@@ -177,6 +183,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.PROOFPATH_CI_ECR_ROLE_ARN }}
           aws-region: us-east-1
+          # See the build job's identical step for why this is explicit.
+          audience: sts.amazonaws.com
       - name: Authenticate Docker to ECR Public
         run: aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
       - name: Install pinned Chromium
