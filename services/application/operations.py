@@ -19,6 +19,15 @@ ever produced a new generation it would produce a new name, and the duplicate
 suppression the whole design rests on would be bypassed by the very tool meant
 to recover from a duplicate. There is a test in those words.
 
+**The operator is checked before anything acts.** This used to be wrong, and
+wrong in the worst direction: the id was validated when the audit record was
+constructed, which is *after* the retry. A typo'd ``--operator`` retried the
+job, started an execution, wrote no audit row, and printed "refused before
+acting". Three typos reached the retry cap having recorded nothing at all.
+Validation now happens on the first line of each action, before the controller
+is touched, so a refusal is a refusal and the audit trail cannot be outrun by
+the thing it exists to describe.
+
 **When the record is written.** After the action, carrying its outcome, because
 an audit entry that says "retried" for a retry that was refused is worse than no
 entry at all -- it is a false one, and an operator reading it later has no way to
@@ -48,7 +57,7 @@ from services.application.ports import (
     read,
 )
 from services.domain.errors import DomainError
-from services.domain.ids import Id, Timestamped
+from services.domain.ids import ID_PATTERN, Id, Timestamped, is_valid_id
 from services.domain.jobs import OutboxEvent
 
 #: The audit trail's own partition. Operator actions are not aggregate state --
@@ -59,6 +68,27 @@ AUDIT_PREFIX = "OPERATION#"
 
 def audit_key(operation_id: str) -> Key:
     return (f"{AUDIT_PREFIX}{operation_id}", "RECORD")
+
+
+class OperatorNotNamed(ValueError):
+    """The operator id is not one this system can record.
+
+    Raised *before* anything acts, which is the entire point. An audit trail
+    that can be outrun by the action it describes is not an audit trail, and the
+    one moment there is to catch a mistyped name is before the retry, not while
+    writing it down afterwards.
+    """
+
+
+class AuditNotRecorded(RuntimeError):
+    """The action was taken and the record of it could not be written.
+
+    Raised rather than returned, and raised loudly, because the caller is about
+    to be handed an ``AuditRecord`` describing something that happened and was
+    never written down. In a module whose whole premise is that an unrecorded
+    action is indistinguishable from the system acting alone, quietly returning
+    that record would be the failure this file exists to prevent.
+    """
 
 
 class OperatorAction(StrEnum):
@@ -113,6 +143,7 @@ class OperatorConsole:
 
     def retry_job(self, *, operator_id: str, job_id: str) -> AuditRecord:
         """Ask the controller for an authorised retry, and record the answer."""
+        self._require_a_named_operator(operator_id)
         result = self.controller.retry(job_id)
         if isinstance(result, RetryCapReached):
             return self._record(
@@ -144,6 +175,7 @@ class OperatorConsole:
         a publication state that went backwards would make the ordinary
         publisher send it a third time.
         """
+        self._require_a_named_operator(operator_id)
         event = read(self.store, outbox_key(event_id), OutboxEvent)
         if event is None:
             return self._record(
@@ -181,7 +213,24 @@ class OperatorConsole:
             record = read(self.store, key, AuditRecord)
             if record is not None:
                 records.append(record)
-        return records
+        # Sorted by when it happened, not by key. The key carries a generated
+        # id, so key order is whatever the id factory felt like -- which reads
+        # as chronological under the sequential ids used in tests and is
+        # arbitrary under the real ones. An audit trail out of order is worse
+        # than useless: it invites a conclusion about cause.
+        return sorted(records, key=lambda record: record.recorded_at)
+
+    def _require_a_named_operator(self, operator_id: str) -> None:
+        """Refuse before acting, using the identifier rule the codebase has.
+
+        ``is_valid_id`` rather than a rule invented here: an operator id is an
+        identifier like any other, and a second spelling of "what an id is"
+        would be a second thing to keep in step.
+        """
+        if not is_valid_id(operator_id):
+            raise OperatorNotNamed(
+                f"operator id {operator_id!r} does not match {ID_PATTERN}; nothing has been done"
+            )
 
     def _record(
         self,
@@ -200,7 +249,7 @@ class OperatorConsole:
             detail=detail,
             recorded_at=self.clock.now(),
         )
-        self.store.transact(
+        refused = self.store.transact(
             [
                 Write(
                     key=audit_key(record.operation_id),
@@ -210,14 +259,21 @@ class OperatorConsole:
                 )
             ]
         )
+        if refused is not None:
+            raise AuditNotRecorded(
+                f"{action.value} on {subject} was carried out and its record was "
+                f"refused at {refused.key}: {refused.reason}"
+            )
         return record
 
 
 __all__ = [
     "AUDIT_PREFIX",
+    "AuditNotRecorded",
     "AuditRecord",
     "OperatorAction",
     "OperatorConsole",
+    "OperatorNotNamed",
     "Outcome",
     "audit_key",
 ]

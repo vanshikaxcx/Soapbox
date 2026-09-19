@@ -22,12 +22,15 @@ into a list of per-item failures that would claim more knowledge than we have.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final, TypedDict
 
 from services.adapters.dynamo_state_store import PARTITION_ATTRIBUTE
 from services.application.outbox import OutboxPublisher
+
+logger = logging.getLogger(__name__)
 
 #: The partition prefix WP-08 writes outbox rows under. The event source
 #: mapping should filter on it too; this is the second line, because a filter is
@@ -145,9 +148,24 @@ def create_outbox_handler(
     def handle(event: Mapping[str, Any], _context: object) -> BatchResponse:
         batch = parse_stream_batch(event)
         outcome = publisher.publish([delivery.event_id for delivery in batch.deliveries])
-        failed = set(outcome.failed)
+        for event_id in outcome.vanished:
+            # Committed, then gone. Nothing deletes an outbox row, so this is
+            # not housekeeping -- and it used to be answered with silence.
+            logger.error(
+                "outbox row vanished before it was published",
+                extra={"event_id": event_id, "correlation_id": event_id},
+            )
+        # ``vanished`` is reported alongside ``failed``. A retry will not bring
+        # the row back, but reporting it is the only way the message reaches a
+        # dead-letter queue where somebody sees it; treating it as done would
+        # delete the last trace of a committed command.
+        unresolved = set(outcome.failed) | set(outcome.vanished)
         return batch_response(
-            [delivery.identifier for delivery in batch.deliveries if delivery.event_id in failed]
+            [
+                delivery.identifier
+                for delivery in batch.deliveries
+                if delivery.event_id in unresolved
+            ]
             + list(batch.unreadable)
         )
 

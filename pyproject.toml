@@ -50,6 +50,13 @@ dev = [
   # network and no shared fixture to leak between tests.
   "moto[dynamodb,events,stepfunctions]>=5.1.0,<6",
   "mypy>=2.3.1,<2.4",
+  # The infra wiring contract test reads infra/template.yaml. PyYAML arrives
+  # transitively with moto anyway; declared here because a test that depends on
+  # a transitive dependency breaks the day the intermediate one drops it.
+  "pyyaml>=6.0,<7",
+  # Stubs for the above. Without them mypy reads yaml as Any, and a test that
+  # subclasses SafeLoader becomes an error rather than a checked class.
+  "types-pyyaml>=6.0,<7",
   "pip-audit>=2.10.1,<3",
   "pytest>=9.1.1,<10",
   "ruff>=0.16.7,<0.17",

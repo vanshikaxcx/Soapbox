@@ -21,7 +21,7 @@ import pytest
 from moto import mock_aws
 from mypy_boto3_events.client import EventBridgeClient
 
-from services.adapters.eventbridge_bus import BATCH_LIMIT, EventBridgeBus
+from services.adapters.eventbridge_bus import BATCH_LIMIT, UNKNOWN_ERROR, EventBridgeBus
 from services.application.ports import EventBus, PublishRejected
 from services.domain.jobs import OutboxEvent
 
@@ -192,3 +192,57 @@ def test_a_genuine_fault_is_raised_rather_than_reported_per_entry() -> None:
         with patch.object(client, "put_events", side_effect=ConnectionError("no route")):
             with pytest.raises(ConnectionError):
                 bus.publish([event("ev-000001")])
+
+
+def test_a_refused_entry_with_no_error_code_is_still_reported() -> None:
+    """The failure this used to drop on the floor.
+
+    An entry the bus refused without saying why has neither an ``EventId`` nor
+    an ``ErrorCode``. Keying off ``ErrorCode`` skipped it, so the publisher was
+    told the event had been accepted, the outbox row was marked published, and
+    nothing would ever have retried it. A failure is the *absence* of an id.
+    """
+    response = {
+        "FailedEntryCount": 1,
+        "Entries": [{"EventId": "id-0"}, {}, {"EventId": "id-2"}],
+    }
+    with bridge() as (bus, client):
+        with patch.object(client, "put_events", return_value=response):
+            rejected = bus.publish([event("ev-000001"), event("ev-000002"), event("ev-000003")])
+    assert rejected == [PublishRejected(event_id="ev-000002", error_code=UNKNOWN_ERROR)]
+
+
+def test_an_entry_with_an_error_message_but_no_code_is_reported_too() -> None:
+    response = {
+        "FailedEntryCount": 1,
+        "Entries": [{"ErrorMessage": "something went wrong"}],
+    }
+    with bridge() as (bus, client):
+        with patch.object(client, "put_events", return_value=response):
+            rejected = bus.publish([event("ev-000001")])
+    assert [(r.event_id, r.error_code) for r in rejected] == [("ev-000001", UNKNOWN_ERROR)]
+
+
+def test_a_count_that_disagrees_with_the_entries_is_refused_rather_than_guessed() -> None:
+    """The bus counted its failures and we found a different number.
+
+    One of the two readings is wrong and there is no way to tell which. Guessing
+    means either retrying a published event or dropping an unpublished one, so
+    neither is reported.
+    """
+    response = {
+        "FailedEntryCount": 2,
+        "Entries": [{"EventId": "id-0"}, {"ErrorCode": "InternalException"}],
+    }
+    with bridge() as (bus, client):
+        with patch.object(client, "put_events", return_value=response):
+            with pytest.raises(ValueError, match="cannot be attributed"):
+                bus.publish([event("ev-000001"), event("ev-000002")])
+
+
+def test_a_count_of_zero_is_believed_and_nothing_is_reported() -> None:
+    """The ordinary path: no failures claimed, no entries read."""
+    response = {"FailedEntryCount": 0, "Entries": [{"EventId": "id-0"}]}
+    with bridge() as (bus, client):
+        with patch.object(client, "put_events", return_value=response):
+            assert bus.publish([event("ev-000001")]) == []

@@ -25,6 +25,7 @@ guarantee, only a second thing to get wrong -- and the two could disagree.
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, TypedDict
@@ -35,6 +36,8 @@ from services.application.controller import JobController
 from services.application.outbox import job_id_of
 from services.domain.errors import DomainError
 from services.domain.jobs import OutboxEvent
+
+logger = logging.getLogger(__name__)
 
 
 class ItemFailure(TypedDict):
@@ -51,6 +54,9 @@ class Message:
 
     message_id: str
     job_id: str
+    #: The EventBridge envelope's own id, carried so a log line here can be
+    #: joined to one written by the publisher for the same event.
+    correlation_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,15 +97,26 @@ def parse_queue_batch(event: Mapping[str, Any]) -> QueueBatch:
             # Unidentifiable, so unreportable: naming it in the reply is
             # impossible, and inventing an id would retry a different message.
             continue
-        outbox_event = _event_in(record.get("body"))
-        if outbox_event is None:
+        parsed = _event_in(record.get("body"))
+        if parsed is None:
+            logger.warning(
+                "queue message could not be read as a committed event",
+                extra={"message_id": message_id},
+            )
             unreadable.append(message_id)
             continue
-        messages.append(Message(message_id=message_id, job_id=job_id_of(outbox_event)))
+        outbox_event, correlation_id = parsed
+        messages.append(
+            Message(
+                message_id=message_id,
+                job_id=job_id_of(outbox_event),
+                correlation_id=correlation_id,
+            )
+        )
     return QueueBatch(tuple(messages), tuple(unreadable))
 
 
-def _event_in(body: object) -> OutboxEvent | None:
+def _event_in(body: object) -> tuple[OutboxEvent, str] | None:
     """The committed event inside an EventBridge envelope, or ``None``.
 
     Validated as the domain's own ``OutboxEvent`` rather than picked apart field
@@ -126,10 +143,12 @@ def _event_in(body: object) -> OutboxEvent | None:
     detail = envelope.get("detail")
     if not isinstance(detail, Mapping):
         return None
+    correlation_id = envelope.get("id")
     try:
-        return OutboxEvent.model_validate_json(json.dumps(dict(detail)))
+        parsed = OutboxEvent.model_validate_json(json.dumps(dict(detail)))
     except (ValidationError, TypeError, ValueError):
         return None
+    return parsed, correlation_id if isinstance(correlation_id, str) else ""
 
 
 def batch_response(failures: Sequence[str]) -> BatchResponse:
@@ -174,16 +193,37 @@ def _resolved(controller: JobController, message: Message) -> bool:
     gets its own fault. The batch is never lost; it is just never lost *as a
     batch*.
     """
+    context = {
+        "job_id": message.job_id,
+        "message_id": message.message_id,
+        "correlation_id": message.correlation_id,
+    }
     try:
         outcome = controller.deliver(message.job_id)
     except Exception:
+        # ``exception`` rather than a bare return: this used to discard the
+        # fault entirely, so a genuine bug retried until ``maxReceiveCount`` and
+        # arrived in the dead-letter queue with nothing anywhere saying why.
+        # The catch stays broad because this layer cannot name the faults --
+        # importing botocore here is exactly what the boundary guard forbids --
+        # so the traceback is the only thing that can distinguish a throttle
+        # from a programming error, and it is now written down.
+        logger.exception("delivery raised; the message will be redelivered", extra=context)
         return False
-    # A ``DomainError`` here is not a shrug. ``JobNotFound`` in particular means
-    # the job row is missing for an event that was committed in the same
-    # transaction as that row -- so it cannot be a race, and a retry will not
-    # invent it. Reporting it sends the message to the dead-letter queue, where
-    # it is visible; treating it as success would delete the only evidence.
-    return not isinstance(outcome, DomainError)
+    if isinstance(outcome, DomainError):
+        logger.warning(
+            "delivery refused: %s", outcome.code, extra={**context, "code": outcome.code}
+        )
+        return False
+    # A ``DomainError`` is not a shrug. ``JobNotFound`` in particular means the
+    # job row is missing for an event committed in the same transaction as that
+    # row -- so it cannot be a race, and a retry will not invent it. Reporting it
+    # sends the message to the dead-letter queue, where it is visible; treating
+    # it as success would delete the only evidence.
+    logger.info(
+        "delivery resolved to %s", outcome.run_id, extra={**context, "run_id": outcome.run_id}
+    )
+    return True
 
 
 def lambda_handler(event: Mapping[str, Any], context: object) -> BatchResponse:

@@ -29,6 +29,7 @@ back, because it was never anything else on the way out.
 from __future__ import annotations
 
 import functools
+import hashlib
 import importlib
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -44,6 +45,7 @@ from services.application.ports import (
     Write,
     reject_duplicate_keys,
 )
+from services.domain.canonical import canonical_json
 
 if TYPE_CHECKING:  # pragma: no cover - import exists for the type checker only
     from mypy_boto3_dynamodb.client import DynamoDBClient
@@ -142,10 +144,14 @@ def encode(item: object) -> dict[str, AttributeValueTypeDef]:
 
 def decode(attributes: dict[str, AttributeValueTypeDef]) -> object:
     """Rebuild the record, validating from JSON so an ``int`` stays an ``int``."""
-    tag = attributes[TYPE_ATTRIBUTE].get("S")
-    body = attributes[BODY_ATTRIBUTE].get("S")
+    # ``get`` rather than ``[]``: an item with no ``TYPE`` at all is the same
+    # corruption as one with an unreadable ``TYPE``, and raising ``KeyError``
+    # from here would send a caller looking for a missing dictionary key rather
+    # than a malformed row.
+    tag = (attributes.get(TYPE_ATTRIBUTE) or {}).get("S")
+    body = (attributes.get(BODY_ATTRIBUTE) or {}).get("S")
     if tag is None or body is None:
-        raise TypeTagRefused("stored item is missing its type tag or its body")
+        raise TypeTagRefused(f"stored item is missing its {TYPE_ATTRIBUTE} or its {BODY_ATTRIBUTE}")
     return _resolve(tag).model_validate_json(body)
 
 
@@ -224,9 +230,10 @@ class DynamoStateStore:
                 f"{len(writes)} writes exceeds DynamoDB's limit of {TRANSACTION_LIMIT}; "
                 "splitting them would give up the all-or-none guarantee"
             )
+        items = [self._transact_item(write) for write in writes]
         try:
             self._client.transact_write_items(
-                TransactItems=[self._transact_item(write) for write in writes]
+                TransactItems=items, ClientRequestToken=request_token(items)
             )
         except ClientError as error:
             failure = self._as_condition_failure(error, writes)
@@ -282,7 +289,13 @@ class DynamoStateStore:
             # with no ``except`` -- property 1 holds even when the reasons do
             # not arrive.
             return self._recheck(writes)
-        for write, reason in zip(writes, reasons, strict=False):
+        if len(reasons) != len(writes):
+            # The reasons cannot be lined up with the writes, so which guard
+            # failed is unknowable from them. Re-checking is slower and right;
+            # picking by position would name whichever write happened to sit at
+            # the index, which is worse than not answering.
+            return self._recheck(writes)
+        for write, reason in zip(writes, reasons, strict=True):
             if str(reason.get("Code", "")) == "ConditionalCheckFailed":
                 return ConditionFailed(key=write.key, reason=write.reason)
         return None
@@ -322,6 +335,46 @@ class DynamoStateStore:
             if not last:
                 return
             request["ExclusiveStartKey"] = last
+
+
+#: DynamoDB's ceiling on a client request token. A SHA-256 hex digest is 64
+#: characters, so it is truncated -- 128 bits of it, which is not a number of
+#: collisions anybody will see.
+TOKEN_LENGTH: Final = 32
+
+
+def request_token(items: list[TransactWriteItemTypeDef]) -> str:
+    """An idempotency token derived from the transaction itself.
+
+    This is the difference between a shopper being told "your approval went
+    through" and being told "someone else got there first" about *their own*
+    successful approval.
+
+    botocore retries DynamoDB on socket errors and 5xx responses. If the
+    approval transaction commits and the response is lost on the way back, that
+    retry re-sends the same eight writes -- and the third one asserts
+    ``MUST_NOT_EXIST`` on the payment-key row, which now exists because the
+    first attempt succeeded. The transaction is cancelled, this adapter
+    faithfully reports ``ConditionFailed``, and the caller renders a 409 for a
+    purchase that was already approved and already dispatched. Everything
+    committed; only the answer was wrong.
+
+    ``ClientRequestToken`` is DynamoDB's answer: within a ten-minute window, a
+    repeat of a *successful* transaction with the same token returns
+    successfully without applying anything again. Derived from the write set
+    rather than generated, because a fresh token per attempt would be no token
+    at all, and computed once here -- above botocore's retry loop -- so every
+    retry of one logical transaction carries the same one.
+
+    Derived from what DynamoDB is actually being asked to do: the rendered
+    items, keys, conditions and encoded bodies. Two different transactions
+    cannot collide, because their keys differ. Two attempts at one transaction
+    cannot differ, because nothing in the rendering depends on the clock, the
+    process or the attempt number. That last property is the one worth
+    protecting: a token that varied with anything else would silently stop
+    working while still looking present.
+    """
+    return hashlib.sha256(canonical_json(items)).hexdigest()[:TOKEN_LENGTH]
 
 
 @dataclass(frozen=True, slots=True)
@@ -379,6 +432,7 @@ __all__ = [
     "BODY_ATTRIBUTE",
     "PARTITION_ATTRIBUTE",
     "SORT_ATTRIBUTE",
+    "TOKEN_LENGTH",
     "TRANSACTION_LIMIT",
     "TYPE_ATTRIBUTE",
     "VERSION_ATTRIBUTE",
@@ -387,5 +441,6 @@ __all__ = [
     "TypeTagRefused",
     "decode",
     "encode",
+    "request_token",
     "type_tag",
 ]

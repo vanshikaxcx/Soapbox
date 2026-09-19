@@ -111,6 +111,7 @@ class StepFunctionsEngine:
             state=state,
             result_ref=described.get("output") or None,
             error_code=described.get("error") or None,
+            started_at=described.get("startDate"),
         )
 
     def execution_ref(self, run_id: str) -> str:

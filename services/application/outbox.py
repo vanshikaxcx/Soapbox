@@ -66,14 +66,22 @@ def job_id_of(event: OutboxEvent) -> str:
 class PublicationOutcome:
     """What happened to each event, named so a caller never has to infer it.
 
-    ``skipped`` is deliberately not ``failed``. An event that was already
-    published, or whose row has gone, is not something a retry can improve --
-    reporting it as a failure would make the source redeliver it forever.
+    ``skipped`` means "already published", and it is deliberately not
+    ``failed``: a retry cannot improve it, and reporting it as one would make
+    the source redeliver it forever.
+
+    ``vanished`` used to be folded into ``skipped``, which answered a serious
+    thing with silence. An outbox row is committed in the same transaction as
+    the state it describes and nothing in this codebase deletes one -- there is
+    a guard asserting that over the whole tree -- so a row that is not there is
+    not a tidy-up, it is a committed command that has gone missing. It is kept
+    apart so a caller can treat it as the anomaly it is.
     """
 
     published: tuple[str, ...] = ()
     failed: tuple[str, ...] = ()
     skipped: tuple[str, ...] = ()
+    vanished: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +95,7 @@ class OutboxPublisher:
         """Publish every pending event named, and say what became of each."""
         pending: list[OutboxEvent] = []
         skipped: list[str] = []
+        vanished: list[str] = []
         seen: set[str] = set()
 
         for event_id in event_ids:
@@ -94,15 +103,19 @@ class OutboxPublisher:
                 continue
             seen.add(event_id)
             event = read(self.store, outbox_key(event_id), OutboxEvent)
-            if event is None or event.publication_state is PublicationState.PUBLISHED:
-                # A row that is gone, or already published, has nothing left to
-                # do. Not a failure: there is no retry that would change it.
+            if event is None:
+                # Not the same thing as "already done". Nothing deletes an
+                # outbox row, so this is a committed command that is missing.
+                vanished.append(event_id)
+                continue
+            if event.publication_state is PublicationState.PUBLISHED:
+                # Already sent. A retry cannot improve it.
                 skipped.append(event_id)
                 continue
             pending.append(event)
 
         if not pending:
-            return PublicationOutcome(skipped=tuple(skipped))
+            return PublicationOutcome(skipped=tuple(skipped), vanished=tuple(vanished))
 
         rejected = {rejection.event_id: rejection for rejection in self.bus.publish(pending)}
         published: list[str] = []
@@ -115,7 +128,7 @@ class OutboxPublisher:
                 published.append(event.event_id)
             else:
                 failed.append(event.event_id)
-        return PublicationOutcome(tuple(published), tuple(failed), tuple(skipped))
+        return PublicationOutcome(tuple(published), tuple(failed), tuple(skipped), tuple(vanished))
 
     def _mark_published(self, event: OutboxEvent) -> ConditionFailed | None:
         """Record the publication, unconditionally.

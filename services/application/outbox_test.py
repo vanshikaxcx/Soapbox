@@ -83,10 +83,29 @@ def test_an_already_published_event_is_skipped_not_republished(
     assert bus.published == []
 
 
-def test_an_event_whose_row_has_gone_is_skipped(store: MemoryStore, bus: RecordingEventBus) -> None:
+def test_an_event_whose_row_has_gone_is_not_called_skipped(
+    store: MemoryStore, bus: RecordingEventBus
+) -> None:
+    """Missing is not the same as done, and it used to be reported as done.
+
+    An outbox row is committed in the same transaction as the state it
+    describes, and a guard asserts that nothing in the tree deletes one. So a
+    row that is not there is a committed command that has gone missing -- which
+    was being answered with silence, in the same field used for "already sent".
+    """
     outcome = OutboxPublisher(store=store, bus=bus).publish(["ev-000009"])
-    assert outcome == PublicationOutcome(skipped=("ev-000009",))
+    assert outcome == PublicationOutcome(vanished=("ev-000009",))
+    assert outcome.skipped == ()
     assert bus.batches == []
+
+
+def test_a_vanished_row_and_a_published_row_are_told_apart(
+    store: MemoryStore, bus: RecordingEventBus
+) -> None:
+    seed(store, event("ev-000001", state=PublicationState.PUBLISHED))
+    outcome = OutboxPublisher(store=store, bus=bus).publish(["ev-000001", "ev-000009"])
+    assert outcome.skipped == ("ev-000001",)
+    assert outcome.vanished == ("ev-000009",)
 
 
 def test_the_publisher_reads_the_row_rather_than_trusting_the_delivery(

@@ -33,8 +33,10 @@ if TYPE_CHECKING:  # pragma: no cover - import exists for the type checker only
 #: EventBridge's own ceiling on one ``PutEvents`` call.
 BATCH_LIMIT: Final = 10
 
-#: Reported when the bus refuses an entry without saying why. Never expected;
-#: named so a retry loop logs something an operator can search for.
+#: Reported when the bus refuses an entry without saying why. Reachable: a
+#: failed entry is one with no ``EventId``, and nothing obliges EventBridge to
+#: put an ``ErrorCode`` beside the absence. Named so a retry loop logs something
+#: an operator can search for rather than an empty string.
 UNKNOWN_ERROR: Final = "UnknownError"
 
 
@@ -56,19 +58,41 @@ class EventBridgeBus:
         rejected: list[PublishRejected] = []
         for batch in _batched(events, BATCH_LIMIT):
             response = self._client.put_events(Entries=[self._entry(event) for event in batch])
-            if not response.get("FailedEntryCount"):
+            failed_count = response.get("FailedEntryCount") or 0
+            if not failed_count:
                 continue
             # Index-aligned with the request, which is the only link back to the
             # event. Zipped strictly so a short response is a loud failure
             # rather than a silent misattribution of somebody else's error.
+            #
+            # A failure is an entry with no ``EventId``, not an entry with an
+            # ``ErrorCode``. Those sound like the same test and are not: an
+            # entry the bus refused without saying why has neither, and keying
+            # off ``ErrorCode`` dropped it -- reporting success for an event
+            # that was never published, so the outbox row would be marked
+            # published and nothing would ever retry it. Reading the *absence*
+            # of an id means an unexplained refusal is still a refusal.
+            found: list[PublishRejected] = []
             for event, result in zip(batch, response.get("Entries", []), strict=True):
-                error_code = result.get("ErrorCode")
-                if error_code:
-                    rejected.append(
-                        PublishRejected(
-                            event_id=event.event_id, error_code=error_code or UNKNOWN_ERROR
-                        )
+                if result.get("EventId"):
+                    continue
+                found.append(
+                    PublishRejected(
+                        event_id=event.event_id,
+                        error_code=result.get("ErrorCode") or UNKNOWN_ERROR,
                     )
+                )
+            if len(found) != failed_count:
+                # The bus counted its failures and we found a different number.
+                # One of the two readings is wrong and there is no way to tell
+                # which, so neither is reported: guessing here means either
+                # retrying a published event or dropping an unpublished one.
+                raise ValueError(
+                    f"EventBridge reported {failed_count} failed entries and "
+                    f"{len(found)} could be identified; the response cannot be "
+                    "attributed to events"
+                )
+            rejected.extend(found)
         return rejected
 
     def _entry(self, event: OutboxEvent) -> PutEventsRequestEntryTypeDef:

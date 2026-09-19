@@ -39,6 +39,10 @@ ALLOWED_STDLIB = {
     # A worker's input arrives as a JSON string on a queue. Unwrapping it is
     # precisely this layer's job, and the layer above must never see the string.
     "json",
+    # A worker is the outermost layer and the only one that may log. The
+    # application layer is forbidden it by its own guard -- a use case reports by
+    # returning a value -- so this is where a swallowed fault becomes visible.
+    "logging",
     "typing",
 }
 

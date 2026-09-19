@@ -27,14 +27,16 @@ from services.application.fakes import (
 )
 from services.application.operations import (
     AUDIT_PREFIX,
+    AuditNotRecorded,
     AuditRecord,
     OperatorAction,
     OperatorConsole,
+    OperatorNotNamed,
     Outcome,
     audit_key,
 )
 from services.application.outbox import outbox_key
-from services.application.ports import Write, read
+from services.application.ports import ConditionFailed, Write, read
 from services.application.purchase import job_key
 from services.domain.jobs import Job, JobType, OutboxEvent, PublicationState
 from services.domain.transitions import JobState
@@ -284,3 +286,118 @@ def test_the_record_carries_the_moment_from_the_clock_port(desk: Desk) -> None:
 
 def test_an_empty_desk_has_no_history(desk: Desk) -> None:
     assert desk.console.history() == []
+
+
+# -- H1: the operator is checked before anything acts -----------------------
+
+
+def test_a_mistyped_operator_stops_the_retry_before_it_happens(desk: Desk) -> None:
+    """The bug this replaces, in the direction that matters.
+
+    The id used to be validated when the audit record was built -- after the
+    controller had already retried. So a typo retried the job, started an
+    execution, wrote no audit row, and reported "refused before acting". Three
+    typos reached the retry cap having recorded nothing at all.
+    """
+    desk.given(job())
+    with pytest.raises(OperatorNotNamed):
+        desk.console.retry_job(operator_id="me", job_id=JOB_ID)
+    assert desk.job_row().generation == 1, "the job must not have been retried"
+    assert desk.engine.started == [], "no execution may have been started"
+    assert desk.console.history() == []
+
+
+def test_a_mistyped_operator_stops_a_replay_before_it_happens(desk: Desk) -> None:
+    desk.given(event())
+    with pytest.raises(OperatorNotNamed):
+        desk.console.replay_event(operator_id="me", event_id=EVENT_ID)
+    assert desk.bus.published == []
+    assert desk.console.history() == []
+
+
+def test_the_refusal_names_the_rule_it_applied(desk: Desk) -> None:
+    desk.given(job())
+    with pytest.raises(OperatorNotNamed, match="nothing has been done"):
+        desk.console.retry_job(operator_id="", job_id=JOB_ID)
+
+
+def test_repeated_typos_cannot_exhaust_the_retry_cap(desk: Desk) -> None:
+    """The compound version of the same bug: each typo used to spend a generation."""
+    desk.given(job())
+    for _ in range(DEFAULT_MAX_GENERATIONS + 2):
+        with pytest.raises(OperatorNotNamed):
+            desk.console.retry_job(operator_id="oops", job_id=JOB_ID)
+    assert desk.job_row().generation == 1
+    record = desk.console.retry_job(operator_id=OPERATOR, job_id=JOB_ID)
+    assert record.outcome is Outcome.DONE
+
+
+# -- H3: an action that cannot be recorded is not reported as recorded ------
+
+
+class RefusingStore(MemoryStore):
+    """A store that refuses to write the audit row, and only that row."""
+
+    def transact(self, writes: list[Write]) -> ConditionFailed | None:
+        if any(write.key[0].startswith(AUDIT_PREFIX) for write in writes):
+            return ConditionFailed(key=writes[0].key, reason="audit row refused")
+        return super().transact(writes)
+
+
+def test_an_action_whose_record_is_refused_raises_rather_than_returning(desk: Desk) -> None:
+    """The caller must not be handed a record that was never written.
+
+    This module's premise is that an action leaving no trace is
+    indistinguishable afterwards from the system having acted alone. Returning
+    the record anyway would produce exactly that, and hand over a convincing
+    artefact of it.
+    """
+    desk.store = RefusingStore()
+    desk.controller = JobController(store=desk.store, engine=desk.engine)
+    desk.console = OperatorConsole(
+        store=desk.store,
+        controller=desk.controller,
+        bus=desk.bus,
+        clock=FixedClock(NOW),
+        ids=SequentialIds(),
+    )
+    desk.given(job())
+    with pytest.raises(AuditNotRecorded, match="was carried out"):
+        desk.console.retry_job(operator_id=OPERATOR, job_id=JOB_ID)
+
+
+def test_the_unrecorded_error_says_what_was_actually_done(desk: Desk) -> None:
+    desk.store = RefusingStore()
+    desk.console = OperatorConsole(
+        store=desk.store,
+        controller=JobController(store=desk.store, engine=desk.engine),
+        bus=desk.bus,
+        clock=FixedClock(NOW),
+        ids=SequentialIds(),
+    )
+    desk.given(event())
+    with pytest.raises(AuditNotRecorded, match="replay_event"):
+        desk.console.replay_event(operator_id=OPERATOR, event_id=EVENT_ID)
+
+
+# -- the trail reads in the order things happened ---------------------------
+
+
+def test_the_history_is_ordered_by_when_it_happened(desk: Desk) -> None:
+    """Key order is whatever the id factory felt like. An audit trail out of
+    order is worse than useless: it invites a conclusion about cause.
+    """
+    clock = FixedClock(NOW)
+    desk.console = OperatorConsole(
+        store=desk.store,
+        controller=desk.controller,
+        bus=desk.bus,
+        clock=clock,
+        ids=SequentialIds(),
+    )
+    desk.given(job(), event())
+    desk.console.replay_event(operator_id=OPERATOR, event_id=EVENT_ID)
+    clock.advance(60)
+    desk.console.retry_job(operator_id=OPERATOR, job_id=JOB_ID)
+    moments = [record.recorded_at for record in desk.console.history()]
+    assert moments == sorted(moments)

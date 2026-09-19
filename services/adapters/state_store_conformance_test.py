@@ -42,6 +42,7 @@ from services.adapters.dynamo_state_store import (
     TypeTagRefused,
     decode,
     encode,
+    request_token,
 )
 from services.application.fakes import MemoryStore
 from services.application.ports import (
@@ -712,3 +713,104 @@ def test_more_writes_than_a_transaction_can_hold_is_refused_before_it_is_sent() 
         with pytest.raises(ValueError, match="all-or-none"):
             store.transact(writes)
         assert store.count_matching("PURCHASE#") == 0
+
+
+# -- the idempotency token (H2) ---------------------------------------------
+#
+# None of this can be driven through moto: it has no lost responses and no
+# botocore retry to survive. What is testable is the property the fix rests on
+# -- that one logical transaction always renders one token, and two different
+# transactions never render the same one -- plus that the token actually
+# reaches DynamoDB. The reasoning for why that is the right token is in
+# ``request_token``'s docstring; these hold the mechanism it depends on.
+
+
+def rendered(store: DynamoStateStore, writes: list[Write]) -> list[Any]:
+    return [store._transact_item(write) for write in writes]  # noqa: SLF001
+
+
+def test_the_token_is_short_enough_for_dynamodb() -> None:
+    """``ClientRequestToken`` is capped at 36 characters, and a SHA-256 hex
+    digest is 64. A token DynamoDB rejects is a token that is not there.
+    """
+    with dynamo() as (store, _):
+        token = request_token(rendered(store, [put(KEY, preparation())]))
+    assert 1 <= len(token) <= 36
+
+
+def test_one_transaction_always_renders_the_same_token() -> None:
+    """The whole point. A token that varied per attempt would be no token at
+    all, and the failure would be invisible: the parameter would still be there.
+    """
+    with dynamo() as (store, _):
+        writes = [
+            put(KEY, preparation(), condition=Condition.MUST_NOT_EXIST),
+            put(OTHER, preparation(version=2)),
+        ]
+        first = request_token(rendered(store, writes))
+        second = request_token(rendered(store, writes))
+    assert first == second
+
+
+def test_the_token_does_not_depend_on_the_clock_or_the_process() -> None:
+    """Rendered twice from equal-but-distinct objects, as a retry would."""
+    with dynamo() as (store, _):
+        one = request_token(rendered(store, [put(KEY, preparation(version=3))]))
+        two = request_token(rendered(store, [put(KEY, preparation(version=3))]))
+    assert one == two
+
+
+def test_different_transactions_render_different_tokens() -> None:
+    with dynamo() as (store, _):
+        base = request_token(rendered(store, [put(KEY, preparation())]))
+        other_key = request_token(rendered(store, [put(OTHER, preparation())]))
+        other_item = request_token(rendered(store, [put(KEY, preparation(changes=1))]))
+        other_guard = request_token(
+            rendered(store, [put(KEY, preparation(), condition=Condition.MUST_NOT_EXIST)])
+        )
+        other_version = request_token(
+            rendered(
+                store,
+                [
+                    put(
+                        KEY,
+                        preparation(),
+                        condition=Condition.VERSION_MUST_BE,
+                        expected_version=7,
+                    )
+                ],
+            )
+        )
+    assert len({base, other_key, other_item, other_guard, other_version}) == 5
+
+
+def test_the_token_reaches_dynamodb_on_every_transaction() -> None:
+    """Present on the call, not merely computed. The bug this fixes was an
+    absent parameter, so the test that matters is that it is sent.
+    """
+    with dynamo() as (store, client):
+        with patch.object(
+            client, "transact_write_items", side_effect=client.transact_write_items
+        ) as spy:
+            assert store.transact([put(KEY, preparation())]) is None
+        sent = spy.call_args.kwargs
+    assert sent["ClientRequestToken"] == request_token(sent["TransactItems"])
+
+
+def test_a_retried_transaction_carries_the_token_it_carried_before() -> None:
+    """Two calls DynamoDB must be able to recognise as one.
+
+    This is what makes a lost response survivable: the second call names the
+    same token, so a transaction that already committed is not applied again --
+    and, crucially, is not reported as a lost race.
+    """
+    with dynamo() as (store, client):
+        writes = [put(KEY, preparation(), condition=Condition.MUST_NOT_EXIST)]
+        with patch.object(
+            client, "transact_write_items", side_effect=client.transact_write_items
+        ) as spy:
+            store.transact(writes)
+            tokens = {spy.call_args.kwargs["ClientRequestToken"]}
+            store.transact(writes)
+            tokens.add(spy.call_args.kwargs["ClientRequestToken"])
+    assert len(tokens) == 1

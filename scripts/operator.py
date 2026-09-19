@@ -41,15 +41,18 @@ from datetime import UTC, datetime
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from pydantic import ValidationError  # noqa: E402
-
 from services.adapters.composition import (  # noqa: E402
     build_event_bus,
     build_state_store,
     build_workflow_engine,
 )
 from services.application.controller import JobController  # noqa: E402
-from services.application.operations import AuditRecord, OperatorConsole  # noqa: E402
+from services.application.operations import (  # noqa: E402
+    AuditNotRecorded,
+    AuditRecord,
+    OperatorConsole,
+    OperatorNotNamed,
+)
 
 
 class SystemClock:
@@ -110,13 +113,19 @@ def main(argv: list[str] | None = None) -> int:
             record = console.retry_job(operator_id=args.operator, job_id=args.job)
         else:
             record = console.replay_event(operator_id=args.operator, event_id=args.event)
-    except ValidationError as malformed:
-        # A traceback is not an operator interface. This is the one thing the
-        # shim is allowed to know: which field the human got wrong.
-        fields = ", ".join(str(error["loc"][0]) for error in malformed.errors())
-        print(f"refused before acting: {fields} is not in the form this system uses")
+    except OperatorNotNamed as unnamed:
+        # Now literally true: the console checks the name before it acts, so
+        # nothing has happened. This message used to print after the retry had
+        # already run.
+        print(f"refused before acting: {unnamed}")
         print("identifiers match ^[A-Za-z0-9_-]{8,64}$ -- try 'firstname-lastname'")
         return 2
+    except AuditNotRecorded as unrecorded:
+        # The opposite case, and the one to shout about: it happened, and the
+        # trail does not have it. Whoever ran this is the only remaining record.
+        print(f"ACTION TAKEN BUT NOT RECORDED: {unrecorded}")
+        print("write this down by hand; the audit trail does not have it")
+        return 1
 
     print(render(record))
     # The outcome is printed, not signalled: a refusal by the cap is the system

@@ -15,12 +15,14 @@ once against DynamoDB, EventBridge and Step Functions under moto.
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
 import boto3
+import pytest
 from moto import mock_aws
 
 from services.adapters.dynamo_state_store import (
@@ -144,8 +146,25 @@ def seeded(*rows: Job) -> MemoryStore:
 
 def test_a_queued_event_becomes_a_message_naming_its_job() -> None:
     batch = parse_queue_batch(queue(message(message_id="m-1", body=envelope(event()))))
-    assert batch.messages == (Message(message_id="m-1", job_id=JOB_ID),)
+    assert batch.messages == (Message(message_id="m-1", job_id=JOB_ID, correlation_id="1e0a3f0c"),)
     assert batch.unreadable == ()
+
+
+def test_the_envelopes_id_is_carried_as_the_correlation_id() -> None:
+    """So a line logged here can be joined to one the publisher wrote for the
+    same event. The spec asks every log line to carry one; this is where the
+    consumer gets it.
+    """
+    batch = parse_queue_batch(queue(message(message_id="m-1", body=envelope(event()))))
+    assert batch.messages[0].correlation_id == "1e0a3f0c"
+
+
+def test_a_message_with_no_envelope_id_still_delivers() -> None:
+    """A missing correlation id degrades the log line; it must not lose the job."""
+    body = json.dumps({"detail": json.loads(event().model_dump_json())})
+    batch = parse_queue_batch(queue(message(message_id="m-1", body=body)))
+    assert batch.messages[0].job_id == JOB_ID
+    assert batch.messages[0].correlation_id == ""
 
 
 def test_the_identifier_is_the_sqs_message_id_not_a_sequence_number() -> None:
@@ -592,3 +611,56 @@ def test_the_two_kinds_stay_apart_in_the_batch_even_though_they_answer_alike() -
     )
     assert batch.unreadable == ("m-unparseable",)
     assert [m.message_id for m in batch.messages] == ["m-fine"]
+
+
+# -- a swallowed fault is no longer swallowed (M7) --------------------------
+
+
+def test_an_unexpected_fault_is_logged_before_the_message_is_retried(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """It used to be discarded entirely.
+
+    ``except Exception: return False`` meant a genuine bug retried until
+    ``maxReceiveCount`` and arrived in the dead-letter queue with nothing
+    anywhere saying why. The traceback is the only thing that distinguishes a
+    throttle from a programming error.
+    """
+    store = seeded(job())
+    inner = RecordingWorkflowEngine()
+    handler = create_job_consumer(
+        JobController(store=store, engine=FaultyEngine(inner, breaks=None))
+    )
+    with caplog.at_level(logging.ERROR):
+        reply = handler(queue(message(message_id="m-1", body=envelope(event()))), None)
+    assert reply == {"batchItemFailures": [{"itemIdentifier": "m-1"}]}
+    assert "no route to the engine" in caplog.text, "the fault itself must be recorded"
+    assert "Traceback" in caplog.text, "a bare message cannot tell a bug from a throttle"
+
+
+def test_the_log_line_carries_the_job_and_the_correlation_id(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The spec asks every line to carry them; this is a line that matters."""
+    store = seeded(job())
+    handler = create_job_consumer(
+        JobController(store=store, engine=FaultyEngine(RecordingWorkflowEngine(), breaks=None))
+    )
+    with caplog.at_level(logging.ERROR):
+        handler(queue(message(message_id="m-1", body=envelope(event()))), None)
+    recorded = [entry for entry in caplog.records if entry.levelno >= logging.ERROR]
+    assert recorded, "the fault should have been logged"
+    assert getattr(recorded[0], "job_id", None) == JOB_ID
+    assert getattr(recorded[0], "correlation_id", None) == "1e0a3f0c"
+    assert getattr(recorded[0], "message_id", None) == "m-1"
+
+
+def test_a_refused_delivery_is_logged_with_the_rules_own_code(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    handler = create_job_consumer(
+        JobController(store=MemoryStore(), engine=RecordingWorkflowEngine())
+    )
+    with caplog.at_level(logging.WARNING):
+        handler(queue(message(message_id="m-1", body=envelope(event()))), None)
+    assert "job_not_found" in caplog.text

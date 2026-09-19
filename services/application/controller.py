@@ -213,19 +213,43 @@ class JobController:
     # -- repairing ---------------------------------------------------------
 
     def stale_running(self, now: datetime) -> list[str]:
-        """Running jobs old enough to be worth asking the engine about.
+        """Running jobs whose *current run* has been going long enough to ask about.
 
-        A scan, which O-3 permits here: repair is operator-and-schedule work on
-        no shopper-facing path. Being on this list is not a finding -- it is the
-        reason to go and look.
+        Measured from when the execution started, not from when the job was
+        created. Those are different numbers the moment anything is retried:
+        ``retry()`` increments the generation and starts a new execution but
+        leaves ``created_at`` alone, so a job retried one second ago has an
+        ancient creation date and a brand-new run. Measuring from the job would
+        put it on this list immediately and keep it there -- the list would fill
+        with exactly the jobs somebody had just intervened on.
+
+        Falls back to ``created_at`` when the engine does not report a start
+        time, or when the job has no execution recorded at all. That case is a
+        job that is running with nothing to ask about, which is worth surfacing
+        rather than hiding behind a missing timestamp.
+
+        One engine call per running job, which O-3 permits here: repair is
+        operator-and-schedule work on no shopper-facing path. Being on this list
+        is not a finding -- it is the reason to go and look.
         """
         cutoff = now - timedelta(seconds=self.stale_after_seconds)
         stale: list[str] = []
         for key in self.store.keys_matching("JOB#"):
             job = read(self.store, key, Job)
-            if job is not None and job.status is JobState.RUNNING and job.created_at <= cutoff:
+            if job is None or job.status is not JobState.RUNNING:
+                continue
+            if self._running_since(job) <= cutoff:
                 stale.append(job.job_id)
         return stale
+
+    def _running_since(self, job: Job) -> datetime:
+        """When the run now in progress began, as well as can be known."""
+        if job.execution_ref is None:
+            return job.created_at
+        status = self.engine.status(execution_ref=job.execution_ref)
+        if status is None or status.started_at is None:
+            return job.created_at
+        return status.started_at
 
     def repair(self, job_id: str) -> Repaired | DomainError:
         """Reconcile one job against what the engine says actually happened."""
@@ -253,7 +277,7 @@ class JobController:
             return self._settle(job, jobs.succeed(job, status.result_ref), RepairAction.SUCCEEDED)
         return self._settle(
             job,
-            jobs.fail(job, status.error_code or _ERROR_CODES[status.state]),
+            jobs.fail(job, status.error_code or _ERROR_CODES.get(status.state, FAILED_CODE)),
             RepairAction.FAILED,
         )
 

@@ -14,6 +14,7 @@ the same code at a real account.
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -313,3 +314,29 @@ def test_a_redelivery_through_the_real_adapters_publishes_once() -> None:
             assert handler(delivery, None) == {"batchItemFailures": []}
             assert handler(delivery, None) == {"batchItemFailures": []}
         assert spy.call_count == 1
+
+
+def test_a_vanished_row_is_reported_rather_than_answered_with_silence(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A committed outbox row that is not there is not housekeeping.
+
+    It used to be folded in with "already published" and dropped from the reply
+    entirely, so the message was deleted and the only trace of a committed
+    command went with it. Reported now, and logged: reporting is what gets it to
+    a dead-letter queue where somebody sees it.
+    """
+    store = MemoryStore()
+    handler = create_outbox_handler(OutboxPublisher(store=store, bus=RecordingEventBus()))
+    with caplog.at_level(logging.ERROR):
+        reply = handler(stream(record(sequence="1", partition="OUTBOX#ev-000009")), None)
+    assert reply == {"batchItemFailures": [{"itemIdentifier": "1"}]}
+    assert "vanished" in caplog.text
+
+
+def test_an_already_published_row_is_still_not_reported() -> None:
+    """The other half of the split: redelivery of a sent event stays silent."""
+    store = seeded(event("ev-000001", state=PublicationState.PUBLISHED))
+    handler = create_outbox_handler(OutboxPublisher(store=store, bus=RecordingEventBus()))
+    reply = handler(stream(record(sequence="1", partition="OUTBOX#ev-000001")), None)
+    assert reply == {"batchItemFailures": []}

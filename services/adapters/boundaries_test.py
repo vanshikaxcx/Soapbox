@@ -36,6 +36,10 @@ ALLOWED_STDLIB = {
     "dataclasses",
     "enum",
     "functools",
+    # The idempotency token on a transaction is a digest of that transaction.
+    # Hashing is the adapter's own business here: the token exists because of
+    # how *DynamoDB* retries, and nothing above this layer knows that.
+    "hashlib",
     "importlib",
     # The composition root is exactly, and only, where the environment is read.
     "os",

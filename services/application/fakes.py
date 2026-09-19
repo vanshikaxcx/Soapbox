@@ -30,6 +30,7 @@ from services.application.ports import (
     Key,
     PublishRejected,
     StartedExecution,
+    StateStore,
     Write,
     reject_duplicate_keys,
 )
@@ -184,10 +185,14 @@ class RecordingWorkflowEngine:
     suppression is the name, so the fake has to keep names.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, clock: FixedClock | None = None) -> None:
         self.started: list[str] = []
         self._executions: dict[str, ExecutionStatus] = {}
         self._payloads: dict[str, str] = {}
+        #: Optional, because most tests do not care when a run began. Supplied,
+        #: the fake records a start time the way the real engine does -- which is
+        #: what lets a test about staleness be about the run rather than the job.
+        self._clock = clock
 
     def start(self, *, run_id: str, payload: str) -> StartedExecution:
         self.started.append(run_id)
@@ -196,7 +201,11 @@ class RecordingWorkflowEngine:
             return StartedExecution(
                 run_id=run_id, execution_ref=self.execution_ref(run_id), started_new_run=False
             )
-        self._executions[run_id] = ExecutionStatus(run_id=run_id, state=ExecutionState.RUNNING)
+        self._executions[run_id] = ExecutionStatus(
+            run_id=run_id,
+            state=ExecutionState.RUNNING,
+            started_at=self._clock.now() if self._clock is not None else None,
+        )
         self._payloads[run_id] = payload
         return StartedExecution(
             run_id=run_id, execution_ref=self.execution_ref(run_id), started_new_run=True
@@ -225,8 +234,13 @@ class RecordingWorkflowEngine:
         error_code: str | None = None,
     ) -> None:
         """Move a run to a terminal state, the way the engine eventually would."""
+        existing = self._executions.get(run_id)
         self._executions[run_id] = ExecutionStatus(
-            run_id=run_id, state=state, result_ref=result_ref, error_code=error_code
+            run_id=run_id,
+            state=state,
+            result_ref=result_ref,
+            error_code=error_code,
+            started_at=existing.started_at if existing is not None else None,
         )
 
     def forget(self, run_id: str) -> None:
@@ -237,7 +251,7 @@ class RecordingWorkflowEngine:
         return len(self._executions)
 
 
-def seed_into(store: object, writes: list[Write]) -> None:
+def seed_into(store: StateStore, writes: list[Write]) -> None:
     """Put a situation into any store, then make the seeding invisible.
 
     Written against the port so a fixture seeds the same way whichever store it
@@ -245,7 +259,7 @@ def seed_into(store: object, writes: list[Write]) -> None:
     any. Nothing here goes through ``MemoryStore.seed``, which would work on one
     store and silently do nothing on the other.
     """
-    store.transact(writes)  # type: ignore[attr-defined]
+    store.transact(writes)
     reset = getattr(store, "reset_bookkeeping", None)
     if reset is not None:
         reset()

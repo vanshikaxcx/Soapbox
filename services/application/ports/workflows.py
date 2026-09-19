@@ -17,6 +17,7 @@ single unknown-shaped value is how they get confused. Repair treats ``None`` as
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
@@ -67,6 +68,12 @@ class ExecutionStatus:
     state: ExecutionState
     result_ref: str | None = None
     error_code: str | None = None
+    #: When *this run* began, which is not when the job was created. A retry
+    #: makes a new execution and leaves ``Job.created_at`` alone, so measuring
+    #: staleness from the job would report a run that started a second ago as
+    #: long overdue. ``None`` when the engine does not say, and the caller then
+    #: has to fall back to something it does know.
+    started_at: datetime | None = None
 
 
 @runtime_checkable

@@ -25,7 +25,7 @@ from services.application.controller import (
     RetryCapReached,
     execution_payload,
 )
-from services.application.fakes import MemoryStore, RecordingWorkflowEngine
+from services.application.fakes import FixedClock, MemoryStore, RecordingWorkflowEngine
 from services.application.ports import ExecutionState, Write, read
 from services.application.purchase import job_key
 from services.domain.errors import IllegalTransition
@@ -436,3 +436,68 @@ def test_being_listed_is_a_reason_to_look_not_a_verdict(
     assert control.stale_running(MOMENT + timedelta(days=7)) == [JOB_ID]
     assert control.repair(JOB_ID).action is RepairAction.STILL_RUNNING  # type: ignore[union-attr]
     assert row(store).status is JobState.RUNNING
+
+
+# -- staleness is about the run, not the job (M2) ---------------------------
+
+
+def timed(store: MemoryStore, clock: FixedClock) -> tuple[JobController, RecordingWorkflowEngine]:
+    """A controller whose engine records when each run began."""
+    engine = RecordingWorkflowEngine(clock=clock)
+    return JobController(store=store, engine=engine), engine
+
+
+def test_a_job_retried_a_moment_ago_is_not_stale(store: MemoryStore) -> None:
+    """The bug this replaces.
+
+    ``retry()`` starts a new execution and leaves ``created_at`` alone, so
+    measuring from the job reported a run that began one second ago as long
+    overdue -- and the stale list would fill with exactly the jobs somebody had
+    just intervened on.
+    """
+    clock = FixedClock(MOMENT)
+    control, engine = timed(store, clock)
+    seed(store, job())
+    control.deliver(JOB_ID)
+
+    clock.advance(2000)
+    assert control.stale_running(clock.now()) == [JOB_ID], "the first run is overdue"
+
+    engine.finish("job-0000001-r1", ExecutionState.FAILED, error_code="task_failed")
+    control.repair(JOB_ID)
+    control.retry(JOB_ID)
+
+    clock.advance(1)
+    assert control.stale_running(clock.now()) == [], "the new run has barely started"
+    assert row(store).generation == 2
+    assert row(store).created_at == MOMENT, "the job is old; the run is not"
+
+
+def test_a_long_running_execution_is_still_reported(store: MemoryStore) -> None:
+    clock = FixedClock(MOMENT)
+    control, _ = timed(store, clock)
+    seed(store, job())
+    control.deliver(JOB_ID)
+    clock.advance(901)
+    assert control.stale_running(clock.now()) == [JOB_ID]
+
+
+def test_a_job_running_with_no_execution_falls_back_to_its_creation(
+    store: MemoryStore, engine: RecordingWorkflowEngine
+) -> None:
+    """Running with nothing to ask about is worth surfacing, not hiding behind
+    a missing timestamp.
+    """
+    seed(store, job(status=JobState.RUNNING))
+    assert controller(store, engine).stale_running(MOMENT + timedelta(days=1)) == [JOB_ID]
+
+
+def test_an_engine_that_reports_no_start_time_falls_back_to_creation(
+    store: MemoryStore, engine: RecordingWorkflowEngine
+) -> None:
+    """The default fake records no start time, so this is the fallback path."""
+    control = controller(store, engine)
+    seed(store, job())
+    control.deliver(JOB_ID)
+    assert control.stale_running(MOMENT + timedelta(days=1)) == [JOB_ID]
+    assert control.stale_running(MOMENT + timedelta(seconds=1)) == []
