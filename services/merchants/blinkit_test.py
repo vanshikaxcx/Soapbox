@@ -18,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from services.merchants import blinkit as blinkit_module
-from services.merchants.blinkit import BlinkitMerchant
+from services.merchants.blinkit import BlinkitMerchant, _extract_zone_id
 from services.merchants.models import ItemQuery, Location, MerchantErrorCode
 from services.merchants.playwright_base import PlaywrightMerchant
 
@@ -62,6 +62,44 @@ def test_search_still_warms_location_when_time_remains(monkeypatch: pytest.Monke
     future_deadline = datetime.now(UTC) + timedelta(seconds=45)
     merchant.search(LOCATION, ItemQuery(name="rice", quantity=5.0, unit="kg"), future_deadline)
     assert calls == ["110001"]
+
+
+def _state_with_merchant(value: str, origin: str = "https://blinkit.com") -> dict[str, object]:
+    return {
+        "cookies": [],
+        "origins": [{"origin": origin, "localStorage": [{"name": "merchant", "value": value}]}],
+    }
+
+
+def test_extract_zone_id_reads_the_merchant_localstorage_id() -> None:
+    """Confirmed live 2026-09-19: differs per locality (34748 for 110001 vs.
+    49585 for 400001) -- this is the real server-derived identifier AC-01-04
+    needs, not an echo of the input pincode."""
+    state = _state_with_merchant('{"id":34748}')
+    assert _extract_zone_id(state) == "34748"  # type: ignore[arg-type]
+
+
+def test_extract_zone_id_is_none_when_merchant_key_is_absent() -> None:
+    state: dict[str, object] = {
+        "cookies": [],
+        "origins": [{"origin": "https://blinkit.com", "localStorage": []}],
+    }
+    assert _extract_zone_id(state) is None  # type: ignore[arg-type]
+
+
+def test_extract_zone_id_is_none_when_value_is_malformed_json() -> None:
+    state = _state_with_merchant("not json")
+    assert _extract_zone_id(state) is None  # type: ignore[arg-type]
+
+
+def test_extract_zone_id_is_none_when_id_field_is_missing() -> None:
+    state = _state_with_merchant("{}")
+    assert _extract_zone_id(state) is None  # type: ignore[arg-type]
+
+
+def test_extract_zone_id_ignores_other_origins() -> None:
+    state = _state_with_merchant('{"id":34748}', origin="https://example.com")
+    assert _extract_zone_id(state) is None  # type: ignore[arg-type]
 
 
 class _UnusedEvidenceSink:
