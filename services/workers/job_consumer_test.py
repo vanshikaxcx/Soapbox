@@ -372,10 +372,14 @@ def approved() -> MemoryStore:
     Driven through the real use case, not assembled here: the point of the loop
     test is that the rows it walks are the rows production writes, including the
     ``reference=job_id`` contract the consumer routes on.
+
+    Typed as the fake because the loop test that runs on the real adapters hands
+    these rows on with ``snapshot()``, which only the fake has. That is the
+    honest shape: WP-08 commits into its own store, and the rows are copied.
     """
     world = World()
     world.approve_ok()
-    return world.store
+    return world.memory
 
 
 def committed_event(store: StateStore) -> OutboxEvent:

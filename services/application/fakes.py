@@ -131,6 +131,19 @@ class MemoryStore:
     def seed(self, key: Key, item: object) -> None:
         self._items[key] = item
 
+    def reset_bookkeeping(self) -> None:
+        """Forget the transactions counted so far, keeping the items.
+
+        Setting a situation up is not behaviour under test. A fixture that
+        seeds through ``transact`` -- which it must, if it is to work on any
+        store and not just this one -- would otherwise be counted alongside the
+        use case's own writes, and every "committed exactly once" assertion
+        would be off by one.
+        """
+        self.transactions.clear()
+        self.commits = 0
+        self.rejections = 0
+
     def snapshot(self) -> dict[Key, object]:
         return copy.copy(self._items)
 
@@ -222,6 +235,20 @@ class RecordingWorkflowEngine:
 
     def runs(self) -> int:
         return len(self._executions)
+
+
+def seed_into(store: object, writes: list[Write]) -> None:
+    """Put a situation into any store, then make the seeding invisible.
+
+    Written against the port so a fixture seeds the same way whichever store it
+    was handed; the bookkeeping reset is best-effort, because only the fake has
+    any. Nothing here goes through ``MemoryStore.seed``, which would work on one
+    store and silently do nothing on the other.
+    """
+    store.transact(writes)  # type: ignore[attr-defined]
+    reset = getattr(store, "reset_bookkeeping", None)
+    if reset is not None:
+        reset()
 
 
 class AllowAllPolicy:
@@ -327,4 +354,5 @@ __all__ = [
     "ScriptedMerchant",
     "ScriptedSpeechSynthesizer",
     "SequentialIds",
+    "seed_into",
 ]

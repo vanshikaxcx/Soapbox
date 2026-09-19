@@ -8,8 +8,9 @@ than sleeps, so they are deterministic and fast.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from services.application.fakes import (
     AllowAllPolicy,
@@ -17,8 +18,16 @@ from services.application.fakes import (
     FixedClock,
     MemoryStore,
     SequentialIds,
+    seed_into,
 )
-from services.application.ports import Action, ConditionFailed, PolicyPort, read
+from services.application.ports import (
+    Action,
+    ConditionFailed,
+    PolicyPort,
+    StateStore,
+    Write,
+    read,
+)
 from services.application.purchase import (
     AttemptCreated,
     IdempotencyRecord,
@@ -147,8 +156,17 @@ def a_quote(
 class World:
     """A ready-to-approve situation: purchase stored, quote stored, clock fixed."""
 
-    def __init__(self, *, policy: PolicyPort | None = None) -> None:
-        self.store = MemoryStore()
+    #: How a ``World`` gets its store when a caller does not supply one.
+    #: Defaults to the fake, so every existing call site is unchanged. The
+    #: adapter conformance run swaps it, which is what lets these tests --
+    #: written with no adapter in mind, and therefore not shaped to flatter one
+    #: -- run unaltered against DynamoDB.
+    store_factory: ClassVar[Callable[[], StateStore]] = MemoryStore
+
+    def __init__(
+        self, *, policy: PolicyPort | None = None, store: StateStore | None = None
+    ) -> None:
+        self.store = World.store_factory() if store is None else store
         self.clock = FixedClock(NOW)
         self.ids = SequentialIds()
         self.uc = PurchaseUseCases(
@@ -166,8 +184,45 @@ class World:
             mode=Mode.LIVE,
         )
         self.quote = a_quote(self.purchase_id)
-        self.store.seed(purchase_key(self.purchase_id), self.purchase)
-        self.store.seed(quote_key(self.purchase_id, self.quote.quote_id), self.quote)
+        # ``transact`` rather than ``MemoryStore.seed``: seeding has to work on
+        # whichever store this World was given, and an unconditional write is
+        # exactly what ``seed`` was.
+        seed_into(
+            self.store,
+            [
+                Write(
+                    key=purchase_key(self.purchase_id),
+                    item=self.purchase,
+                    reason="seeded",
+                ),
+                Write(
+                    key=quote_key(self.purchase_id, self.quote.quote_id),
+                    item=self.quote,
+                    reason="seeded",
+                ),
+            ],
+        )
+
+    @property
+    def memory(self) -> MemoryStore:
+        """The store as the fake, for the tests that are *about* the fake.
+
+        Reaching for ``before_transact`` or ``commits`` is not a wart. Those
+        tests are about interleaving and about how many transactions a use case
+        committed, and the fake exists precisely to make those observable --
+        there is no way to ask a real DynamoDB "did you commit exactly once".
+
+        Naming it here rather than typing ``store`` as the fake keeps two things
+        true at once: ``store`` is the port, which is what the use cases take,
+        and a test that needs the fake says so. It also means such a test fails
+        with a sentence rather than an ``AttributeError`` if it is ever pointed
+        at a real store -- which is how the adapter conformance run knows, by
+        construction, which tests it must not include.
+        """
+        assert isinstance(self.store, MemoryStore), (
+            "this test reads the fake's own bookkeeping, so it cannot run against a real store"
+        )
+        return self.store
 
     def approve(
         self, *, idem: str = "idem-1", version: int = 1, **over: Any
@@ -264,8 +319,8 @@ def test_the_attempt_starts_ready_with_the_payload_frozen() -> None:
 def test_all_eight_writes_commit_together() -> None:
     world = World()
     world.approve()
-    assert world.store.commits == 1
-    assert len(world.store.transactions[0]) == 8
+    assert world.memory.commits == 1
+    assert len(world.memory.transactions[0]) == 8
 
 
 # -- validation order ------------------------------------------------------
@@ -308,7 +363,7 @@ def test_policy_denial_also_conceals_as_not_found() -> None:
 def test_nothing_is_written_when_validation_fails() -> None:
     world = World()
     world.approve(quote_hash="f" * 64)
-    assert world.store.commits == 0
+    assert world.memory.commits == 0
     assert world.attempts() == 0
 
 
@@ -328,7 +383,7 @@ def test_the_same_key_and_payload_replays_the_same_attempt() -> None:
 def test_the_same_key_with_a_different_payload_is_refused() -> None:
     world = World()
     world.approve(idem="idem-1")
-    world.store.seed(
+    world.memory.seed(
         idempotency_key(OWNER, "approve", "idem-2"),
         IdempotencyRecord(request_hash="different", result_ref="attempt-00000001"),
     )
@@ -364,7 +419,7 @@ def test_two_concurrent_approvals_create_exactly_one_attempt() -> None:
     def second_caller(_writes: object) -> None:
         losers.append(world.approve(idem="idem-2"))
 
-    world.store.before_transact = second_caller
+    world.memory.before_transact = second_caller
     first = world.approve_ok(idem="idem-1")
 
     assert world.attempts() == 1
@@ -388,7 +443,7 @@ def test_the_loser_of_an_approval_race_is_told_about_the_real_attempt() -> None:
     def second_caller(_writes: object) -> None:
         inner.append(world.approve(idem="idem-2"))
 
-    world.store.before_transact = second_caller
+    world.memory.before_transact = second_caller
     outer = world.approve(idem="idem-1")
 
     outcomes = [outer, *inner]
@@ -414,7 +469,7 @@ def test_approve_and_cancel_produce_exactly_one_effect() -> None:
             )
         )
 
-    world.store.before_transact = cancel_mid_flight
+    world.memory.before_transact = cancel_mid_flight
     approval = world.approve()
 
     approved = isinstance(approval, AttemptCreated) and not approval.replayed
@@ -433,7 +488,7 @@ def test_cancel_and_approve_in_the_other_order_also_yield_one_effect() -> None:
     def approve_mid_flight(_writes: object) -> None:
         approvals.append(world.approve())
 
-    world.store.before_transact = approve_mid_flight
+    world.memory.before_transact = approve_mid_flight
     cancellation = world.uc.cancel(
         owner_id=OWNER, purchase_id=world.purchase_id, expected_purchase_version=1
     )
@@ -455,17 +510,17 @@ def test_a_failed_guard_leaves_no_partial_state() -> None:
         quote_id=world.quote.quote_id, quote_hash=world.quote.quote_hash, quote_version=1
     )
     attempt, lookup = _attempt_for(world, consent)
-    world.store.seed(provider_lookup_key(attempt.payment_key), lookup)
+    world.memory.seed(provider_lookup_key(attempt.payment_key), lookup)
 
-    before = world.store.snapshot()
+    before = world.memory.snapshot()
     result = world.approve()
 
     assert isinstance(result, ConditionFailed)
     assert "uniqueness" in result.reason
     assert world.attempts() == 0
-    assert world.store.commits == 0
+    assert world.memory.commits == 0
     # Nothing at all changed except the row we seeded ourselves.
-    assert set(world.store.snapshot()) == set(before)
+    assert set(world.memory.snapshot()) == set(before)
 
 
 def test_an_unexpected_record_where_consent_belongs_is_refused() -> None:
@@ -473,7 +528,7 @@ def test_an_unexpected_record_where_consent_belongs_is_refused() -> None:
     from services.domain.errors import InvalidRecord
 
     world = World()
-    world.store.seed(
+    world.memory.seed(
         approval_key(
             world.purchase_id,
             derive_approval_id(
@@ -538,7 +593,7 @@ def test_a_fresh_approval_after_expiry_gets_a_different_payment_key() -> None:
 
     world.clock.advance(200)
     later = a_quote(world.purchase_id, issued_at=world.clock.now(), version=2, purchase_version=3)
-    world.store.seed(quote_key(world.purchase_id, later.quote_id), later)
+    world.memory.seed(quote_key(world.purchase_id, later.quote_id), later)
 
     second = world.approve(idem="idem-2", version=3, quote_hash=later.quote_hash, quote_version=2)
     assert isinstance(second, AttemptCreated)
@@ -551,7 +606,7 @@ def test_expiry_loses_to_a_dispatch_that_already_started() -> None:
     world = World()
     created = world.approve_ok()
     started = world.attempt_row(created.attempt_id)
-    world.store.seed(
+    world.memory.seed(
         attempt_key(world.purchase_id, created.attempt_id),
         started.model_copy(
             update={"dispatch": DispatchState.STARTED, "started_at": world.clock.now()}

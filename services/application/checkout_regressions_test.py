@@ -227,9 +227,9 @@ def test_the_quote_is_found_through_the_approval_not_by_guessing_an_id() -> None
     assert quote is not None
 
     realistic_id = "q-7f3a91c2-4be8"
-    checkout.world.store._items.pop(stored_key)
+    checkout.world.memory._items.pop(stored_key)
     renamed = quote.model_copy(update={"quote_id": realistic_id})
-    checkout.world.store.seed(quote_key(PURCHASE_ID, realistic_id), renamed)
+    checkout.world.memory.seed(quote_key(PURCHASE_ID, realistic_id), renamed)
 
     # Point the approval at the renamed quote, as a real system would.
     from services.application.purchase import approval_key
@@ -237,7 +237,7 @@ def test_the_quote_is_found_through_the_approval_not_by_guessing_an_id() -> None
     attempt = checkout.attempt_row(checkout.attempt_id)
     approval = read(checkout.world.store, approval_key(PURCHASE_ID, attempt.approval_id), Approval)
     assert approval is not None
-    checkout.world.store.seed(
+    checkout.world.memory.seed(
         approval_key(PURCHASE_ID, attempt.approval_id),
         approval.model_copy(update={"quote_id": realistic_id}),
     )
@@ -252,7 +252,7 @@ def test_a_missing_approval_is_refused_rather_than_guessed_around() -> None:
 
     checkout = Checkout()
     attempt = checkout.attempt_row(checkout.attempt_id)
-    checkout.world.store._items.pop(approval_key(PURCHASE_ID, attempt.approval_id))
+    checkout.world.memory._items.pop(approval_key(PURCHASE_ID, attempt.approval_id))
 
     result = checkout.step()
     assert isinstance(result, InvalidRecord)
