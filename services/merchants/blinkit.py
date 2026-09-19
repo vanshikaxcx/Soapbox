@@ -42,7 +42,7 @@ import re
 import threading
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from playwright.sync_api import Page, StorageState
 
@@ -121,7 +121,8 @@ def _extract_zone_id(state: StorageState) -> str | None:
     missing zone id the same as any other unavailable-attribute case.
     """
     for origin in state.get("origins", []):
-        if "blinkit.com" not in origin.get("origin", ""):
+        host = urlparse(origin.get("origin", "")).hostname or ""
+        if host != "blinkit.com" and not host.endswith(".blinkit.com"):
             continue
         for entry in origin.get("localStorage", []):
             if entry.get("name") != "merchant":
@@ -129,6 +130,8 @@ def _extract_zone_id(state: StorageState) -> str | None:
             try:
                 merchant_id = json.loads(entry["value"])["id"]
             except (json.JSONDecodeError, KeyError, TypeError):
+                return None
+            if not isinstance(merchant_id, (str, int)):
                 return None
             return str(merchant_id)
     return None
@@ -157,6 +160,20 @@ def _extract_address_hint(page: Page) -> str | None:
         return None
     text = element.inner_text().strip()
     return text or None
+
+
+def _verified_location(location: Location) -> Location:
+    """`location` enriched with this pincode's cached AC-01-04 evidence
+    (`merchant_zone_id`/`address_hint`), if `warm_location()` has captured
+    any yet. One shared implementation for `search()` and `refresh()` so
+    the two can't drift on which fields they attach (they previously did:
+    `refresh()` omitted `address_hint`)."""
+    return location.model_copy(
+        update={
+            "merchant_zone_id": _cached_zone_id(location.pincode),
+            "address_hint": _cached_address_hint(location.pincode),
+        }
+    )
 
 
 def _lock_for(pincode: str) -> threading.Lock:
@@ -244,17 +261,34 @@ class BlinkitMerchant(PlaywrightMerchant):
         page.click('div[class*="LocationSearchList__LocationListContainer"]')
         # Location commit is an async client-side action with no element to
         # await; a short settle time was needed live before navigating on.
+        # The 1,500ms wait is a heuristic, not a guaranteed-ready signal for
+        # the client JS that writes the `merchant` localStorage key below --
+        # one retry after an extra short wait covers the case where the
+        # first read races that write, since this flow only ever runs once
+        # per pincode per process (see warm_location()) and a missed
+        # extraction here would otherwise never be retried.
         page.wait_for_timeout(1_500)
         state = page.context.storage_state()
-        _cache_state(location.pincode, state)
         zone_id = _extract_zone_id(state)
+        if zone_id is None:
+            page.wait_for_timeout(1_000)
+            state = page.context.storage_state()
+            zone_id = _extract_zone_id(state)
+        address_hint = _extract_address_hint(page)
+        # _cache_state() is the signal warm_location()'s pre-lock fast path
+        # (`_cached_state(pincode) is not None`) uses to decide this pincode
+        # is fully warmed -- it must be written last, after zone_id/
+        # address_hint are already cached, so a concurrent caller that sees
+        # it set never reads a zone_id/address_hint cache that's still
+        # empty (see warm_location()'s docstring for the concurrency
+        # contract this preserves).
         if zone_id is not None:
             with _location_state_lock:
                 _zone_id_cache[location.pincode] = zone_id
-        address_hint = _extract_address_hint(page)
         if address_hint is not None:
             with _location_state_lock:
                 _address_hint_cache[location.pincode] = address_hint
+        _cache_state(location.pincode, state)
 
     def search(
         self, location: Location, item: ItemQuery, deadline: datetime
@@ -276,12 +310,7 @@ class BlinkitMerchant(PlaywrightMerchant):
             # warm_location(), so this runs in practice only if this method
             # is invoked some other way.
             self._run_location_flow(page, location)
-        verified_location = location.model_copy(
-            update={
-                "merchant_zone_id": _cached_zone_id(location.pincode),
-                "address_hint": _cached_address_hint(location.pincode),
-            }
-        )
+        verified_location = _verified_location(location)
         search_url = f"https://blinkit.com/s/?q={quote(item.name)}"
         # Direct navigation, no UI search interaction: confirmed live that
         # this resolves correctly once the context has a location cookie,
@@ -402,9 +431,7 @@ class BlinkitMerchant(PlaywrightMerchant):
 
             _pid, name, unavailable_qty, price, unit_text, inventory = match.groups()
             pack_size, unit = parse_pack_size(unit_text) or (1.0, "pack")
-            verified_location = location.model_copy(
-                update={"merchant_zone_id": _cached_zone_id(location.pincode)}
-            )
+            verified_location = _verified_location(location)
             return Observation(
                 merchant=self.name,
                 sku=sku,
