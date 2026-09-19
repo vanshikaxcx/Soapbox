@@ -96,7 +96,9 @@ flowchart TB
 
 OpenSearch provides retrieval; EventBridge routes events; SQS buffers deliveries. No additional PartyRock, Firecracker, Corretto or AgentCore dependency. During the initial checkpoint, record region/model ID, voice/engine, quotas, pinned versions and estimated standing compute/search cost. No cross-region calls by default.
 
-Hosting rationale: [App Runner closed to new customers](https://aws.amazon.com/about-aws/whats-new/2026/03/aws-service-availability/); [AWS recommends ECS Express Mode](https://docs.aws.amazon.com/apprunner/latest/dg/apprunner-availability-change.html). Smoke-test Chromium on Fargate early; do not assume desktop shared-memory or privileged-container flags work.
+Hosting rationale: [App Runner closed to new customers](https://aws.amazon.com/about-aws/whats-new/2026/03/aws-service-availability/); [AWS recommends ECS Express Mode](https://docs.aws.amazon.com/apprunner/latest/dg/apprunner-availability-change.html). Smoke-test both browser engines on Fargate early; do not assume desktop shared-memory or privileged-container flags work.
+
+Browser engine is chosen per merchant connector, not globally: Zepto runs on **Lightpanda** (a from-scratch, non-Chromium engine — no CSS/image/font/GPU rendering cost, confirmed live at ~5s/search including JS execution and real price extraction). Blinkit stays on real **Chromium** via Playwright, because it sits behind Cloudflare bot management keyed off TLS fingerprint; Lightpanda's own policy refuses to impersonate a real browser's identity (confirmed live: Lightpanda gets an immediate 403 from Blinkit's Cloudflare edge, Chromium does not). Both engines run as one long-lived process per container, shared across tasks; only the browser context is created and torn down per task.
 
 ## 4. Communication contract
 
@@ -115,7 +117,7 @@ Hosting rationale: [App Runner closed to new customers](https://aws.amazon.com/a
 | Controller → Step Functions → tasks | SDK StartExecution; managed Lambda invocation | IAM; stable run identity, bounded retry/Catch. Persist results before completing tasks. |
 | Task → agent container | HTTPS JSON via managed service endpoint; one bounded task | Rotated server-only token over TLS. Reload trusted record IDs/owner context; validate operation. Agent deadline 90s, worker timeout 100s; no background continuation. |
 | Agent → Bedrock/OpenSearch/storage | SDK or SigV4 HTTPS | ECS task role; trusted owner/search filters, validated model schema. Index outage uses canonical fallback. |
-| Playwright → merchant | Browser HTTPS in isolated context | Registered domains, verified locality; no CAPTCHA bypass or shopper credentials. Close context in finally. |
+| Agent → merchant (Chromium or Lightpanda, per connector) | Browser HTTPS in isolated context | Registered domains, verified locality; no CAPTCHA bypass or shopper credentials. Close context in finally. |
 | Task → simulator | Synchronous AWS Lambda Invoke | IAM; typed operation. Only simulator writes its ledger. Lost response triggers same-key query. |
 | Simulator → callback API | HTTPS POST; async relative to checkout | HMAC body/event/timestamp; durable inbox before 2xx; safe redelivery. |
 | Speech task → Polly → S3 → browser | SDK synthesis returns bytes; task uploads; browser GET plays | Stored assistant caption only. Polly does not push to UI; failure retains captions/retry. |
