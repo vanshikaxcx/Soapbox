@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  ProofPath WP-01 bootstrap: GitHub Actions OIDC trust and the CI role used
+  solely to authenticate `checks.yml`'s `build`/`web-smoke` jobs against
+  ECR Public before `sam build --use-container` pulls the pinned SAM build
+  image. This is a one-time, manually-deployed bootstrap stack, not part of
+  the checkpoint's runtime stack (infra/template.yaml) — it must exist
+  before CI can assume any role, so it cannot itself be deployed by CI.
+  See docs/specs/WP-01-cloud-viability-checkpoint.md (Security section;
+  AC-01-08; Open questions item 8) for the approved scope and constraints.
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Default: vanshikaxcx
+    Description: GitHub organization/user that owns the repository.
+  GitHubRepo:
+    Type: String
+    Default: Soapbox
+    Description: Repository name. Re-verify this against Open questions item 8's carried-forward migration risk before deploying — if the repository has moved to a different owner/name, update this parameter first.
+  GitHubOrgId:
+    Type: String
+    Default: "191361411"
+    Description: >
+      Numeric GitHub organization/owner ID. Required because this account's
+      GitHub org has "customize the subject claims for GitHub Actions" set
+      to include immutable numeric IDs alongside names -- the real `:sub`
+      claim GitHub issues is `repo:<org>@<GitHubOrgId>/<repo>@<GitHubRepoId>:...`,
+      not the plain `repo:<org>/<repo>:...` this template originally assumed.
+      Confirmed 2026-09-19 via CloudTrail's userIdentity.userName on real,
+      rejected AssumeRoleWithWebIdentity calls from PR #9's CI run -- do not
+      revert to the plain org/repo form without re-verifying this org
+      setting has actually changed back.
+  GitHubRepoId:
+    Type: String
+    Default: "1370358227"
+    Description: Numeric GitHub repository ID; see GitHubOrgId's description for why this is required.
+  CreateOidcProvider:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: >
+      Set to "false" only if an OIDC provider for token.actions.githubusercontent.com
+      already exists in this AWS account (IAM only allows one provider per URL
+      per account; a second CreateOidcProvider="true" deploy will fail with
+      EntityAlreadyExists). Check the IAM console's Identity providers list
+      before deploying — do not guess.
+  ExistingOidcProviderArn:
+    Type: String
+    Default: ""
+    Description: >
+      Required only when CreateOidcProvider is "false". The ARN of the
+      existing token.actions.githubusercontent.com provider, copied from the
+      IAM console.
+
+Conditions:
+  ShouldCreateOidcProvider: !Equals [!Ref CreateOidcProvider, "true"]
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: ShouldCreateOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      # IAM validates the provider's TLS chain against its own trusted CA
+      # bundle at federation time rather than pinning to this exact
+      # thumbprint, but the field remains mandatory on this resource type
+      # as of this template's authoring. Verify this is still current AWS
+      # behavior in the console/CLI docs at deploy time rather than trusting
+      # this comment indefinitely — do not silently drop the field if AWS
+      # has changed the requirement by the time this is deployed.
+      #
+      # Fixed 2026-09-19: the value this branch forked with,
+      # 6938fd4d98bab03faadb97b34396831e3780aea, is only 39 hex characters
+      # (AWS::IAM::OIDCProvider requires exactly 40), so CloudFormation
+      # rejects it at early property validation before creating any
+      # resource -- confirmed by attempting this exact deploy. The value
+      # below was computed from GitHub's live TLS chain
+      # (`openssl s_client -servername token.actions.githubusercontent.com
+      # -showcerts`, root CA thumbprint) and matches what is already
+      # deployed on the account's `proofpath-github-oidc` stack.
+      ThumbprintList:
+        - ab9d0263244dd0326eb67015705a667e79cfe998
+
+  GitHubActionsEcrPublicAuthRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: proofpath-ci-ecr-public-auth
+      Description: >
+        Least-privilege role assumed by checks.yml's build/web-smoke jobs
+        solely to call ecr-public:GetAuthorizationToken so `docker login`
+        can authenticate the anonymous-pull-rate-limited public.ecr.aws
+        registry. Grants no other permission; it must not be reused for
+        infra deployment without a reviewed, separate policy addition.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # RESOLVED (code-review finding 1, 2026-09-19): this trust policy
+          # used to accept the pull_request `:sub` claim shape
+          # (`repo:<org>/<repo>:pull_request`) as its own statement, which is
+          # scoped only by event type -- GitHub's own `pull_request`-event
+          # OIDC token genuinely does not encode a target branch in the
+          # `:sub` claim itself, so any PR opened against this repository,
+          # from any source branch, matched that one condition. That is a
+          # real, documented GitHub OIDC limitation -- it is not fixable by
+          # editing the `:sub` match. GitHub's ID token does carry the PR's
+          # target branch on a *separate* claim, `base_ref`, populated only
+          # for pull_request-event runs; AWS's OIDC trust-policy Condition
+          # block can reference any claim the token carries, not just `:sub`.
+          # Splitting the push and pull_request cases into two statements
+          # (rather than one shared StringEquals map) lets the pull_request
+          # statement additionally require
+          # `token.actions.githubusercontent.com:base_ref: main` without
+          # breaking the push statement, whose token never carries a
+          # base_ref claim at all (a single merged StringEquals block ANDs
+          # every key across both cases, which would have made the
+          # push-triggered assumption impossible to satisfy). Net effect: a
+          # PR from any source branch can still assume this role, but only
+          # if it targets `main` -- not "any PR against this repository" as
+          # before. This is still not per-source-branch scoping (GitHub does
+          # not expose that on pull_request-event tokens at all), but it
+          # removes the unbounded fan-in the finding flagged, and the role's
+          # only permission remains ecr-public:GetAuthorizationToken, which
+          # touches no account resource. Unverified against a real GitHub
+          # Actions run in this session (no live AWS/GitHub access);
+          # confirm `base_ref` actually appears in this repo's pull_request
+          # token claims (GitHub's OIDC docs list it as present for
+          # pull_request events) before relying on this in production.
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - ShouldCreateOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Ref ExistingOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}@${GitHubOrgId}/${GitHubRepo}@${GitHubRepoId}:ref:refs/heads/main
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - ShouldCreateOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Ref ExistingOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}@${GitHubOrgId}/${GitHubRepo}@${GitHubRepoId}:pull_request
+                # Restricts the otherwise event-type-only pull_request `:sub`
+                # shape to PRs whose target/base branch is main -- see this
+                # statement block's leading comment for the full rationale.
+                token.actions.githubusercontent.com:base_ref: main
+      Policies:
+        - PolicyName: ecr-public-authorization-token-only
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ecr-public:GetAuthorizationToken
+                # ECR Public's GetAuthorizationToken API does not support
+                # resource-level restriction (AWS-documented limitation for
+                # this specific action) — "*" here is the narrowest this
+                # action can be scoped, not an unreviewed broad grant.
+                Resource: "*"
+
+Outputs:
+  RoleArn:
+    Description: >
+      Set this as the GitHub repository variable PROOFPATH_CI_ECR_ROLE_ARN
+      (Settings > Secrets and variables > Actions > Variables) so
+      checks.yml's OIDC step can assume it.
+    Value: !GetAtt GitHubActionsEcrPublicAuthRole.Arn
+  OidcProviderArn:
+    Description: The OIDC provider ARN actually in use (created or existing), for the evidence record.
+    Value: !If
+      - ShouldCreateOidcProvider
+      - !Ref GitHubOidcProvider
+      - !Ref ExistingOidcProviderArn
