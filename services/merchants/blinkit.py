@@ -85,6 +85,14 @@ _location_state_cache: dict[str, StorageState] = {}
 # together in `_run_location_flow` and both key off pincode.
 _zone_id_cache: dict[str, str] = {}
 
+# The human-readable resolved address Blinkit renders in its location bar
+# right after a pincode is committed (e.g. "New Delhi, Delhi 110001,
+# India") -- confirmed live this element only exists on the homepage
+# immediately after commit, not on the search-results/PDP pages evidence
+# screenshots are actually taken from, so it has to be captured here and
+# carried forward rather than assumed visible in the evidence screenshot.
+_address_hint_cache: dict[str, str] = {}
+
 # One lock per pincode, created lazily, so concurrent callers for the same
 # pincode block on each other (run the slow flow once) while callers for a
 # *different* pincode aren't held up by it.
@@ -129,6 +137,26 @@ def _extract_zone_id(state: StorageState) -> str | None:
 def _cached_zone_id(pincode: str) -> str | None:
     with _location_state_lock:
         return _zone_id_cache.get(pincode)
+
+
+def _cached_address_hint(pincode: str) -> str | None:
+    with _location_state_lock:
+        return _address_hint_cache.get(pincode)
+
+
+def _extract_address_hint(page: Page) -> str | None:
+    """The resolved address text Blinkit's location bar renders after
+    commit (e.g. "New Delhi, Delhi 110001, India") -- confirmed live this
+    element exists only on the homepage right after location commit, not
+    on the search-results/PDP pages evidence screenshots are taken from.
+    `None` if the element is missing/empty (layout changed, or called on a
+    page that never had it) rather than raising.
+    """
+    element = page.query_selector('div[class*="LocationBar__Subtitle"]')
+    if element is None:
+        return None
+    text = element.inner_text().strip()
+    return text or None
 
 
 def _lock_for(pincode: str) -> threading.Lock:
@@ -223,6 +251,10 @@ class BlinkitMerchant(PlaywrightMerchant):
         if zone_id is not None:
             with _location_state_lock:
                 _zone_id_cache[location.pincode] = zone_id
+        address_hint = _extract_address_hint(page)
+        if address_hint is not None:
+            with _location_state_lock:
+                _address_hint_cache[location.pincode] = address_hint
 
     def search(
         self, location: Location, item: ItemQuery, deadline: datetime
@@ -245,7 +277,10 @@ class BlinkitMerchant(PlaywrightMerchant):
             # is invoked some other way.
             self._run_location_flow(page, location)
         verified_location = location.model_copy(
-            update={"merchant_zone_id": _cached_zone_id(location.pincode)}
+            update={
+                "merchant_zone_id": _cached_zone_id(location.pincode),
+                "address_hint": _cached_address_hint(location.pincode),
+            }
         )
         search_url = f"https://blinkit.com/s/?q={quote(item.name)}"
         # Direct navigation, no UI search interaction: confirmed live that
