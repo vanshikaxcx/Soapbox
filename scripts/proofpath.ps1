@@ -396,6 +396,16 @@ function Invoke-Stage5Dev {
 function Invoke-Stage5WebSmoke {
     $previousNodePath = $env:NODE_PATH
     try {
+        # web/.env is gitignored (real deploys get real Cognito config from
+        # WP-01); without it, loadCognitoConfig() throws and the dev server
+        # playwright drives never renders anything to smoke-test. Fall back
+        # to the placeholder values in .env.example so this stage - like any
+        # environment without real Cognito config yet - can still prove the
+        # app builds and boots.
+        $webEnvFile = Join-Path $script:RepositoryRoot "web/.env"
+        if (-not (Test-Path $webEnvFile)) {
+            Copy-Item (Join-Path $script:RepositoryRoot "web/.env.example") $webEnvFile
+        }
         Invoke-Stage5SamBuild
         $env:NODE_PATH = Join-Path $script:RepositoryRoot "web/node_modules"
         Invoke-WithScopedAwsRegion {

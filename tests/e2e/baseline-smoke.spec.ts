@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-test("redirects an unauthenticated visitor to Cognito sign-in", async ({ page }) => {
+test("redirects an unauthenticated visitor to Cognito sign-in", async ({
+  page,
+}) => {
   // WP-03 replaced the static development baseline with the real Cognito
   // PKCE auth shell: an unauthenticated visit to any route (including /)
   // is redirected to the hosted UI, so there is no static heading to assert
