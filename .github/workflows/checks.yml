@@ -183,3 +183,25 @@ jobs:
         run: npm --prefix web exec -- playwright install --with-deps chromium
       - name: Run scaffold and health smoke
         run: pwsh ./scripts/proofpath.ps1 web-smoke
+
+  # TEMPORARY, THROWAWAY: diagnoses the AC-01-08/PR #9 base_ref trust-policy
+  # mismatch. Decodes the JWT payload the runner already has and prints only
+  # non-sensitive claim fields (sub/base_ref/head_ref/ref/event_name -- the
+  # same repo/branch info already visible on this PR, not secrets). Remove
+  # this job once infra/github-oidc.yaml's base_ref condition is fixed.
+  debug-oidc-claims:
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Print non-sensitive OIDC claims (sub/base_ref/head_ref/ref)
+        run: |
+          TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')
+          PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+')
+          case $((${#PAYLOAD} % 4)) in 2) PAYLOAD="$PAYLOAD==";; 3) PAYLOAD="$PAYLOAD=";; esac
+          echo "$PAYLOAD" | base64 -d | jq '{sub, base_ref, head_ref, ref, event_name}'
+        env:
+          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
+          ACTIONS_ID_TOKEN_REQUEST_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
