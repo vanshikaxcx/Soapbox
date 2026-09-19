@@ -195,13 +195,21 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - name: Print non-sensitive OIDC claims (sub/base_ref/head_ref/ref)
+      - name: Print non-sensitive OIDC claims (sub/base_ref/head_ref/ref/aud)
         run: |
-          TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+          decode() {
+            PAYLOAD=$(echo "$1" | cut -d. -f2 | tr '_-' '/+')
+            case $((${#PAYLOAD} % 4)) in 2) PAYLOAD="$PAYLOAD==";; 3) PAYLOAD="$PAYLOAD=";; esac
+            echo "$PAYLOAD" | base64 -d | jq '{aud, sub, base_ref, head_ref, ref, event_name}'
+          }
+          echo "== token requested with explicit audience=sts.amazonaws.com (what my earlier debug step used) =="
+          TOKEN_EXPLICIT=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')
-          PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 | tr '_-' '/+')
-          case $((${#PAYLOAD} % 4)) in 2) PAYLOAD="$PAYLOAD==";; 3) PAYLOAD="$PAYLOAD=";; esac
-          echo "$PAYLOAD" | base64 -d | jq '{sub, base_ref, head_ref, ref, event_name}'
+          decode "$TOKEN_EXPLICIT"
+          echo "== token requested with NO audience param (matches aws-actions/configure-aws-credentials's actual call, which sets no 'audience:' input) =="
+          TOKEN_DEFAULT=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r '.value')
+          decode "$TOKEN_DEFAULT"
         env:
           ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
           ACTIONS_ID_TOKEN_REQUEST_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
