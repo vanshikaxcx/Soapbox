@@ -131,6 +131,18 @@ jobs:
           audience: sts.amazonaws.com
       - name: Authenticate Docker to ECR Public
         run: aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+      # TEMPORARY DIAGNOSTIC (2026-09-19): `sam build --use-container`'s own
+      # image pull is failing with "Could not find ... image locally and
+      # failed to pull it from docker" even though the `docker login` step
+      # right above succeeds. A plain, explicit `docker pull` here tests
+      # whether the credentials this job's `docker login` established are
+      # actually usable by a normal Docker pull -- if this succeeds where
+      # SAM's internal pull doesn't, the gap is in SAM CLI's own credential
+      # passthrough to its build step, not in the OIDC/ECR auth wiring
+      # above. Remove once the resulting failure/success tells us which it
+      # is; this line should not survive to a merged workflow either way.
+      - name: TEMPORARY DIAGNOSTIC - explicit pull of the pinned SAM build image
+        run: docker pull public.ecr.aws/sam/build-python3.12@sha256:6b977f28341c892f743070ef945b600f1b257b668003720dc3bc9b1839fcd666
       - name: Build web and containerized SAM artifacts
         run: pwsh ./scripts/proofpath.ps1 build
 
@@ -187,6 +199,9 @@ jobs:
           audience: sts.amazonaws.com
       - name: Authenticate Docker to ECR Public
         run: aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+      # See the build job's identical step for why this is here.
+      - name: TEMPORARY DIAGNOSTIC - explicit pull of the pinned SAM build image
+        run: docker pull public.ecr.aws/sam/build-python3.12@sha256:6b977f28341c892f743070ef945b600f1b257b668003720dc3bc9b1839fcd666
       - name: Install pinned Chromium
         run: npm --prefix web exec -- playwright install --with-deps chromium
       - name: Run scaffold and health smoke
