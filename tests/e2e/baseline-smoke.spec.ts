@@ -1,10 +1,15 @@
 import { expect, test } from "@playwright/test";
 
-test("renders the static development baseline", async ({ page }) => {
+test("redirects an unauthenticated visitor to Cognito sign-in", async ({ page }) => {
+  // WP-03 replaced the static development baseline with the real Cognito
+  // PKCE auth shell: an unauthenticated visit to any route (including /)
+  // is redirected to the hosted UI, so there is no static heading to assert
+  // on anymore. The redirect completes almost immediately, so assert on the
+  // stable end state (arrival at the hosted UI) rather than the transient
+  // "Redirecting..." notice, which toHaveURL's own polling can race and miss.
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "ProofPath" })).toBeVisible();
-  await expect(page.getByText("Development baseline")).toBeVisible();
+  await expect(page).toHaveURL(/amazoncognito\.com/);
 });
 
 test("returns the health envelope through the API", async ({ request }) => {
