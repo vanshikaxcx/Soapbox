@@ -183,20 +183,3 @@ jobs:
         run: npm --prefix web exec -- playwright install --with-deps chromium
       - name: Run scaffold and health smoke
         run: pwsh ./scripts/proofpath.ps1 web-smoke
-
-  # TEMPORARY, THROWAWAY: diagnoses the AC-01-08/PR #9 base_ref trust-policy
-  # mismatch using GitHub's own official OIDC debug tool
-  # (https://github.com/github/actions-oidc-debugger). Prints this run's
-  # real token claims to the job summary so infra/github-oidc.yaml's
-  # base_ref condition can be corrected against the actual value instead of
-  # guessed. Remove this job once that fix lands -- it has no purpose
-  # beyond this one debugging session.
-  debug-oidc-claims:
-    runs-on: ubuntu-24.04
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - uses: github/actions-oidc-debugger@v1
-        with:
-          audience: sts.amazonaws.com
