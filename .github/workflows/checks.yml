@@ -94,6 +94,9 @@ jobs:
 
   build:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -112,6 +115,16 @@ jobs:
         run: npm --prefix web ci
       - name: Sync Python dependencies (frozen)
         run: uv sync --frozen
+      - name: Configure AWS credentials via OIDC (ECR Public auth only)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.PROOFPATH_CI_ECR_ROLE_ARN }}
+          # ECR Public's control-plane API lands only in us-east-1, regardless
+          # of the app's ap-south-1 region (see infra/github-oidc.yaml and
+          # WP-01 AC-01-08); this is not a region-consistency violation.
+          aws-region: us-east-1
+      - name: Authenticate Docker to ECR Public
+        run: aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
       - name: Build web and containerized SAM artifacts
         run: pwsh ./scripts/proofpath.ps1 build
 
@@ -138,6 +151,9 @@ jobs:
 
   web-smoke:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -156,6 +172,13 @@ jobs:
         run: npm --prefix web ci
       - name: Sync Python dependencies (frozen)
         run: uv sync --frozen
+      - name: Configure AWS credentials via OIDC (ECR Public auth only)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.PROOFPATH_CI_ECR_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Authenticate Docker to ECR Public
+        run: aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
       - name: Install pinned Chromium
         run: npm --prefix web exec -- playwright install --with-deps chromium
       - name: Run scaffold and health smoke
