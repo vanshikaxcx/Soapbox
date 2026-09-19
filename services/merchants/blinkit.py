@@ -37,6 +37,7 @@ the kind of thing scripts/spike_merchant.py exists to re-verify.
 
 from __future__ import annotations
 
+import json
 import re
 import threading
 from datetime import UTC, datetime, timedelta
@@ -76,6 +77,22 @@ _CART_ITEM_RE = re.compile(
 _location_state_lock = threading.Lock()
 _location_state_cache: dict[str, StorageState] = {}
 
+# The real, server-derived dark-store id Blinkit assigns for a committed
+# location (confirmed live: differs per locality -- e.g. "34748" for
+# 110001 vs. "49585" for 400001 -- while the `city` cookie can still read
+# the IP-region default underneath, which is exactly what AC-01-04 checks
+# for). Cached alongside `_location_state_cache` since both are captured
+# together in `_run_location_flow` and both key off pincode.
+_zone_id_cache: dict[str, str] = {}
+
+# The human-readable resolved address Blinkit renders in its location bar
+# right after a pincode is committed (e.g. "New Delhi, Delhi 110001,
+# India") -- confirmed live this element only exists on the homepage
+# immediately after commit, not on the search-results/PDP pages evidence
+# screenshots are actually taken from, so it has to be captured here and
+# carried forward rather than assumed visible in the evidence screenshot.
+_address_hint_cache: dict[str, str] = {}
+
 # One lock per pincode, created lazily, so concurrent callers for the same
 # pincode block on each other (run the slow flow once) while callers for a
 # *different* pincode aren't held up by it.
@@ -91,6 +108,55 @@ def _cached_state(pincode: str) -> StorageState | None:
 def _cache_state(pincode: str, state: StorageState) -> None:
     with _location_state_lock:
         _location_state_cache[pincode] = state
+
+
+def _extract_zone_id(state: StorageState) -> str | None:
+    """The `merchant` localStorage key's numeric `id`, as a string.
+
+    Confirmed live (2026-09-19): Blinkit assigns this after a location is
+    committed -- it's the dark-store/serviceability-zone Blinkit itself
+    resolved from the geocoded pincode, not anything echoed from the
+    request. `None` if the key is missing or unparseable (e.g. Blinkit's
+    localStorage shape changed) rather than raising -- the caller treats a
+    missing zone id the same as any other unavailable-attribute case.
+    """
+    for origin in state.get("origins", []):
+        if "blinkit.com" not in origin.get("origin", ""):
+            continue
+        for entry in origin.get("localStorage", []):
+            if entry.get("name") != "merchant":
+                continue
+            try:
+                merchant_id = json.loads(entry["value"])["id"]
+            except (json.JSONDecodeError, KeyError, TypeError):
+                return None
+            return str(merchant_id)
+    return None
+
+
+def _cached_zone_id(pincode: str) -> str | None:
+    with _location_state_lock:
+        return _zone_id_cache.get(pincode)
+
+
+def _cached_address_hint(pincode: str) -> str | None:
+    with _location_state_lock:
+        return _address_hint_cache.get(pincode)
+
+
+def _extract_address_hint(page: Page) -> str | None:
+    """The resolved address text Blinkit's location bar renders after
+    commit (e.g. "New Delhi, Delhi 110001, India") -- confirmed live this
+    element exists only on the homepage right after location commit, not
+    on the search-results/PDP pages evidence screenshots are taken from.
+    `None` if the element is missing/empty (layout changed, or called on a
+    page that never had it) rather than raising.
+    """
+    element = page.query_selector('div[class*="LocationBar__Subtitle"]')
+    if element is None:
+        return None
+    text = element.inner_text().strip()
+    return text or None
 
 
 def _lock_for(pincode: str) -> threading.Lock:
@@ -179,7 +245,16 @@ class BlinkitMerchant(PlaywrightMerchant):
         # Location commit is an async client-side action with no element to
         # await; a short settle time was needed live before navigating on.
         page.wait_for_timeout(1_500)
-        _cache_state(location.pincode, page.context.storage_state())
+        state = page.context.storage_state()
+        _cache_state(location.pincode, state)
+        zone_id = _extract_zone_id(state)
+        if zone_id is not None:
+            with _location_state_lock:
+                _zone_id_cache[location.pincode] = zone_id
+        address_hint = _extract_address_hint(page)
+        if address_hint is not None:
+            with _location_state_lock:
+                _address_hint_cache[location.pincode] = address_hint
 
     def search(
         self, location: Location, item: ItemQuery, deadline: datetime
@@ -201,6 +276,12 @@ class BlinkitMerchant(PlaywrightMerchant):
             # warm_location(), so this runs in practice only if this method
             # is invoked some other way.
             self._run_location_flow(page, location)
+        verified_location = location.model_copy(
+            update={
+                "merchant_zone_id": _cached_zone_id(location.pincode),
+                "address_hint": _cached_address_hint(location.pincode),
+            }
+        )
         search_url = f"https://blinkit.com/s/?q={quote(item.name)}"
         # Direct navigation, no UI search interaction: confirmed live that
         # this resolves correctly once the context has a location cookie,
@@ -263,7 +344,7 @@ class BlinkitMerchant(PlaywrightMerchant):
                         # inner_text() rather than a specific badge class
                         # keeps this robust to layout/class changes.
                         in_stock="Out of Stock" not in card.inner_text(),
-                        verified_location=location,
+                        verified_location=verified_location,
                         fetch_time=datetime.now(UTC),
                         evidence_key=evidence_key,
                         extraction_status=ExtractionStatus.OK,
@@ -321,6 +402,9 @@ class BlinkitMerchant(PlaywrightMerchant):
 
             _pid, name, unavailable_qty, price, unit_text, inventory = match.groups()
             pack_size, unit = parse_pack_size(unit_text) or (1.0, "pack")
+            verified_location = location.model_copy(
+                update={"merchant_zone_id": _cached_zone_id(location.pincode)}
+            )
             return Observation(
                 merchant=self.name,
                 sku=sku,
@@ -330,7 +414,7 @@ class BlinkitMerchant(PlaywrightMerchant):
                 unit=unit,
                 price_paise=int(round(float(price) * 100)),
                 in_stock=int(unavailable_qty) == 0 and int(inventory) > 0,
-                verified_location=location,
+                verified_location=verified_location,
                 fetch_time=datetime.now(UTC),
                 evidence_key=self._capture_evidence(page.context, page),
                 extraction_status=ExtractionStatus.OK,
