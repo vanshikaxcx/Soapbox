@@ -45,6 +45,23 @@ from services.application.purchase import outbox_key
 from services.domain.jobs import OutboxEvent, PublicationState
 
 
+def job_id_of(event: OutboxEvent) -> str:
+    """The job this outbox event dispatches.
+
+    WP-08 writes ``reference=job_id`` on every outbox event it commits, at both
+    construction sites. Named here rather than read inline at the call site,
+    because ``reference`` means something *different* on the two envelopes that
+    carry it: on ``OutboxEvent`` it is the job to run, and on ``Job`` it is the
+    aggregate the job is about -- a purchase id, or an attempt id.
+
+    A reader who knows one meaning will guess the other wrong, and the guess is
+    silent: routing on ``Job.reference`` would look up a job that does not
+    exist and the event would be dead-lettered rather than run. So the mapping
+    has one home and a test that pins it against WP-08's own output.
+    """
+    return event.reference
+
+
 @dataclass(frozen=True, slots=True)
 class PublicationOutcome:
     """What happened to each event, named so a caller never has to infer it.
@@ -125,5 +142,6 @@ __all__ = [
     "OutboxPublisher",
     "PublicationOutcome",
     "PublishRejected",
+    "job_id_of",
     "outbox_key",
 ]

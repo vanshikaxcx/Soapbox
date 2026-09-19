@@ -34,8 +34,14 @@ from services.application.outbox import OutboxPublisher
 #: configuration and configuration drifts.
 OUTBOX_PREFIX: Final = "OUTBOX#"
 
-#: A removed row has nothing left to publish, and the use case would skip it
-#: anyway. Named rather than inferred so the reason is readable.
+#: A removed row has nothing left to publish. Ignoring it is a decision, not an
+#: oversight: the only way to "handle" a delete would be to publish from the
+#: stream's old image, which would make this worker decide from a snapshot
+#: instead of catching up from committed state -- and catching up is the single
+#: property an outbox has. The alternative is to guarantee that nothing deletes
+#: an outbox row, which is what ``outbox_test.py`` asserts over the whole tree.
+#: When pruning is designed, that test fails first and the question gets
+#: answered deliberately rather than discovered.
 IGNORED_EVENT_NAMES: Final = frozenset({"REMOVE"})
 
 

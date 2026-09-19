@@ -9,6 +9,8 @@ on every delivery.
 
 from __future__ import annotations
 
+import ast
+import pathlib
 from datetime import UTC, datetime
 
 import pytest
@@ -221,3 +223,91 @@ def test_the_publisher_uses_wp08s_own_key(store: MemoryStore, bus: RecordingEven
     break waiting for the day one of the two changes.
     """
     assert outbox_key("ev-000001") == ("OUTBOX#ev-000001", "EVENT")
+
+
+# -- nothing deletes an outbox row ------------------------------------------
+
+
+def _writes_in(tree: ast.AST) -> list[ast.Call]:
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "Write"
+    ]
+
+
+def _keyword(call: ast.Call, name: str) -> ast.expr | None:
+    for keyword in call.keywords:
+        if keyword.arg == name:
+            return keyword.value
+    return None
+
+
+def _targets_the_outbox(call: ast.Call) -> bool:
+    key = _keyword(call, "key")
+    return (
+        isinstance(key, ast.Call) and isinstance(key.func, ast.Name) and key.func.id == "outbox_key"
+    )
+
+
+def _is_a_delete(call: ast.Call) -> bool:
+    item = _keyword(call, "item")
+    # ``Write.item`` defaults to ``None``, so an omitted item is a delete too --
+    # which is exactly the way one would be introduced by accident.
+    return item is None or (isinstance(item, ast.Constant) and item.value is None)
+
+
+MODULES = sorted(
+    path
+    for path in pathlib.Path("services").rglob("*.py")
+    if not path.name.endswith("_test.py") and "__pycache__" not in path.parts
+)
+
+
+def test_there_are_modules_to_scan() -> None:
+    assert len(MODULES) >= 20, "this guard would pass vacuously"
+
+
+@pytest.mark.parametrize("path", MODULES, ids=lambda p: p.name)
+def test_nothing_deletes_an_outbox_row(path: pathlib.Path) -> None:
+    """The decision behind the publisher ignoring a ``REMOVE`` stream record.
+
+    A deleted outbox row cannot be published: there is nothing left to read, and
+    the only way to "handle" the delete would be to publish from the stream's
+    old image -- which would make the publisher decide from a snapshot instead of
+    catching up from committed state. That is the one property an outbox has, so
+    handling a delete is not an option; guaranteeing there are none is.
+
+    So the guarantee is asserted here rather than defended downstream. The day
+    pruning is designed, this test fails and whoever writes it has to decide
+    what a publisher should do about a row that is about to vanish -- instead of
+    discovering months later that a pruned-before-published event went out never
+    and reported nothing.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for call in _writes_in(tree):
+        if _targets_the_outbox(call) and _is_a_delete(call):
+            raise AssertionError(
+                f"{path} deletes an outbox row at line {call.lineno}; the publisher "
+                "ignores REMOVE records on the guarantee that nothing does"
+            )
+
+
+def test_the_guard_would_notice_an_outbox_delete() -> None:
+    """Proves the scan above is capable of failing, both ways a delete is spelt."""
+    explicit = ast.parse("Write(key=outbox_key(e), item=None, reason='prune')\n")
+    implicit = ast.parse("Write(key=outbox_key(e), reason='prune')\n")
+    for tree in (explicit, implicit):
+        calls = _writes_in(tree)
+        assert calls, "the guard no longer recognises a Write call"
+        assert _targets_the_outbox(calls[0])
+        assert _is_a_delete(calls[0])
+
+
+def test_the_guard_does_not_flag_an_ordinary_outbox_write() -> None:
+    tree = ast.parse("Write(key=outbox_key(e), item=event, reason='published')\n")
+    call = _writes_in(tree)[0]
+    assert _targets_the_outbox(call)
+    assert not _is_a_delete(call)
