@@ -24,7 +24,19 @@ class ExtractionStatus(StrEnum):
 class Location(BaseModel):
     locality: str
     pincode: str
+    # Human-readable resolved address/locality string the merchant's own UI
+    # rendered after committing this location (e.g. Blinkit's
+    # "New Delhi, Delhi 110001, India" location-bar text) -- a real,
+    # merchant-confirmed value, not user-supplied input. `None` when a
+    # connector hasn't extracted one.
     address_hint: str | None = None
+    # Server-derived store/serviceability-zone id from the merchant's own
+    # response to a committed location (e.g. Blinkit's dark-store id) --
+    # never a UI-rendered echo of `pincode`/`locality`. `None` when a
+    # connector hasn't extracted one (SPEC AC-01-04 needs this field to
+    # differ across localities as ground-truth evidence of real
+    # server-side location resolution).
+    merchant_zone_id: str | None = None
 
 
 class ItemQuery(BaseModel):
