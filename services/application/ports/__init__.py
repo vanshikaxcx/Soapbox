@@ -33,6 +33,12 @@ from services.application.ports.speech import (
     SpeechSynthesizer,
     TranscribeSessionUrl,
     TranscribeUrlSigner,
+from services.application.ports.index import (
+    IndexedDocument,
+    IndexName,
+    IndexUnavailable,
+    SearchIndex,
+)
 from services.application.ports.workflows import (
     TERMINAL_STATES,
     ExecutionState,
@@ -51,6 +57,9 @@ __all__ = [
     "ExecutionStatus",
     "IdFactory",
     "IdGenerator",
+    "IndexName",
+    "IndexUnavailable",
+    "IndexedDocument",
     "Key",
     "MerchantPort",
     "PolicyPort",
@@ -58,6 +67,7 @@ __all__ = [
     "SpeechSynthesisResult",
     "SpeechSynthesizer",
     "PublishRejected",
+    "SearchIndex",
     "StartedExecution",
     "StateStore",
     "TranscribeSessionUrl",

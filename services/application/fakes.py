@@ -27,6 +27,9 @@ from services.application.ports import (
     ConditionFailed,
     ExecutionState,
     ExecutionStatus,
+    IndexedDocument,
+    IndexName,
+    IndexUnavailable,
     Key,
     PublishRejected,
     StartedExecution,
@@ -251,6 +254,95 @@ class RecordingWorkflowEngine:
         return len(self._executions)
 
 
+class MemorySearchIndex:
+    """An index that answers from a dict, and can be told to go dark.
+
+    The outage is the half that matters. An index that only ever answered could
+    not express the one failure WP-07 names for it -- ``index outage | canonical
+    fallback serves the read`` -- so every fallback test would be unreachable
+    and the fallback branch would be defended by nothing.
+
+    ``put`` is deliberately last-write-wins. Version ordering belongs to
+    ``ProjectionIndexer``; a fake that enforced it here would make the indexer's
+    own check untestable, because the rule would pass whether or not the code
+    under test still contained it.
+
+    Two faults rather than one, and the second is not tidiness. A cluster that
+    has stopped answering reads while still accepting writes is the one shape in
+    which "an outage means nothing is indexed" would silently let an older
+    document overwrite a newer one. A fake that could only be wholly dark would
+    make that mutation survive, because the write would fail for its own reasons
+    and the test could not tell which of the two had saved it.
+    """
+
+    def __init__(self) -> None:
+        self._documents: dict[tuple[IndexName, str], IndexedDocument] = {}
+        #: The cluster error code to report while wholly dark, or ``None``.
+        self.outage: str | None = None
+        #: Reads failing while writes still land. ``None`` when reads are fine.
+        self.read_outage: str | None = None
+        self.puts = 0
+        self.searches = 0
+
+    def _read_fault(self, index: IndexName) -> IndexUnavailable | None:
+        code = self.read_outage or self.outage
+        return None if code is None else IndexUnavailable(index=index, error_code=code)
+
+    # -- the port ----------------------------------------------------------
+
+    def current(
+        self, index: IndexName, document_id: str
+    ) -> IndexedDocument | None | IndexUnavailable:
+        fault = self._read_fault(index)
+        if fault is not None:
+            return fault
+        return self._documents.get((index, document_id))
+
+    def put(self, document: IndexedDocument) -> None | IndexUnavailable:
+        if self.outage is not None:
+            return IndexUnavailable(index=document.index, error_code=self.outage)
+        self._documents[(document.index, document.document_id)] = document
+        self.puts += 1
+        return None
+
+    def search(
+        self, index: IndexName, *, owner_id: str, terms: Sequence[str], limit: int
+    ) -> list[IndexedDocument] | IndexUnavailable:
+        fault = self._read_fault(index)
+        if fault is not None:
+            return fault
+        self.searches += 1
+        matched = [
+            document
+            for document in self._documents.values()
+            if document.index is index
+            and document.owner_id == owner_id
+            and all(term in document.terms for term in terms)
+        ]
+        # Sorted so two runs with the same contents answer identically; an order
+        # that depends on insertion is not something a test may rely on.
+        return sorted(matched, key=lambda d: d.document_id)[:limit]
+
+    # -- test helpers ------------------------------------------------------
+
+    def go_dark(self, error_code: str = "cluster_unreachable") -> None:
+        """Neither reads nor writes are answered."""
+        self.outage = error_code
+
+    def stop_answering_reads(self, error_code: str = "read_timeout") -> None:
+        """Reads fail; writes would still land if anything asked for one."""
+        self.read_outage = error_code
+
+    def recover(self) -> None:
+        self.outage = None
+        self.read_outage = None
+
+    def version_of(self, index: IndexName, document_id: str) -> int | None:
+        """What the index holds now, so a test can assert on it without a search."""
+        document = self._documents.get((index, document_id))
+        return None if document is None else document.version
+
+
 def seed_into(store: StateStore, writes: list[Write]) -> None:
     """Put a situation into any store, then make the seeding invisible.
 
@@ -362,6 +454,7 @@ __all__ = [
     "FixedClock",
     "FixedTranscribeUrlSigner",
     "MemoryAudioSink",
+    "MemorySearchIndex",
     "MemoryStore",
     "RecordingEventBus",
     "RecordingWorkflowEngine",
