@@ -197,6 +197,6 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: github/actions-oidc-debugger@main
+      - uses: github/actions-oidc-debugger@v1
         with:
           audience: sts.amazonaws.com
