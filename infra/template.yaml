@@ -625,6 +625,99 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: agent
 
+  # --- WP-07: durable job transport ---------------------------------------
+  #
+  # These sit against the canonical AppTable above rather than a table of their
+  # own. WP-01's disposable proof of the same chain was removed once its
+  # evidence was captured (PR #18); this is the real one.
+  #
+  # The two worker Lambdas -- the outbox publisher reading AppTable's stream and
+  # the job consumer reading JobQueue -- are deliberately NOT declared here yet,
+  # and neither is the state machine that would invoke a task function. They
+  # need a packaging decision this template cannot make: the workers import
+  # across the whole `services` tree, so `CodeUri` cannot be
+  # `../services/workers`, and SAM builds a Python function from a
+  # requirements.txt inside its own CodeUri, which that directory does not have.
+  #
+  # WP-01 had solved this -- a `uv build --wheel` plus `uv pip install --target`
+  # step in scripts/proofpath.ps1 injected `services/**` into each function's
+  # build output after `sam build`. PR #18 removed that step along with the
+  # checkpoint infra it was serving, so the blocker is open again. Declaring the
+  # functions before it is closed would produce a stack that deploys and then
+  # fails on the first import, which is worse than one that does not deploy.
+  #
+  # Everything below is ordinary CloudFormation that `sam build` does not touch,
+  # so it is safe to land now: the routing exists and is reviewable, and adding
+  # the functions later is an additive change.
+  #
+  # When they are added, both event source mappings MUST declare
+  # `FunctionResponseTypes: [ReportBatchItemFailures]`. Both handlers reason
+  # carefully about which messages to report for retry, and Lambda ignores that
+  # reply entirely without the opt-in -- a refused EventBridge entry, a vanished
+  # outbox row and an unparseable message would all be deleted silently, with
+  # nothing in the Python to look at. tests/contracts/test_infra_wiring.py
+  # enforces this the moment a batched source appears.
+
+  ProofPathEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub "${AWS::StackName}-jobs"
+
+  # A dead-lettered message is the last trace of a committed command, so it is
+  # kept for the SQS maximum rather than a shorter window someone picked.
+  JobDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600 # 14 days, the SQS maximum
+
+  # Both handlers report an unusable message so it is redelivered and then dead
+  # lettered: a partial-batch reply cannot say "dead-letter this now", and
+  # reporting success would delete a committed command. Without a redrive policy
+  # that message is redelivered for ever. maxReceiveCount is WP-01's answer to
+  # O-2, matching the value its own checkpoint queue used.
+  JobQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 120 # >= the 100s worker timeout the spec fixes
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt JobDeadLetterQueue.Arn
+        maxReceiveCount: 5
+
+  JobQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref JobQueue
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt JobQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt JobRule.Arn
+
+  # The outbox publisher puts one event per committed row onto the bus; this
+  # rule is what turns those into queued work. The pattern matches on the
+  # publisher's own source rather than on event detail, so a new job type does
+  # not need a rule change.
+  JobRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref ProofPathEventBus
+      Description: Route published outbox events to the job queue.
+      State: ENABLED
+      EventPattern:
+        source:
+          - proofpath.outbox
+      Targets:
+        - Id: JobQueue
+          Arn: !GetAtt JobQueue.Arn
+
+
 Outputs:
   ApiUrl:
     Description: Base invoke URL for the deployed API stage.
@@ -656,3 +749,15 @@ Outputs:
     Value: !Ref CheckpointAgentSecurityGroup
   CheckpointAgentEvidenceBucketName:
     Value: !Ref CheckpointAgentEvidenceBucket
+
+  JobQueueUrl:
+    Description: WP-07 job queue (PROOFPATH_JOB_QUEUE_URL).
+    Value: !Ref JobQueue
+
+  JobDeadLetterQueueUrl:
+    Description: WP-07 dead-letter queue; inspect this when a job stops arriving.
+    Value: !Ref JobDeadLetterQueue
+
+  EventBusName:
+    Description: WP-07 event bus (PROOFPATH_EVENT_BUS_NAME).
+    Value: !Ref ProofPathEventBus

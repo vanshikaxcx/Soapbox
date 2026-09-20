@@ -112,9 +112,16 @@ def test_the_functions_are_not_wired_yet_and_that_is_recorded(
     """The rule above currently holds over nothing, and says so out loud.
 
     A vacuous assertion that nobody knows is vacuous is worse than no assertion.
-    When WP-01 adds the publisher and consumer this test fails, and whoever is
-    holding it then has to delete it *and* satisfy the rule above -- which is the
-    order those two things should happen in.
+
+    The functions are still undeclared, but the reason has changed. WP-01 had
+    solved the packaging problem -- a ``uv build --wheel`` step in
+    scripts/proofpath.ps1 injected ``services/**`` into each function's build
+    output, so a worker could import across the tree. PR #18 removed that step
+    along with the checkpoint infra it served, so the blocker is open again.
+
+    When it is closed and the publisher and consumer are added, this test fails,
+    and whoever is holding it then has to delete it *and* satisfy the rule above
+    -- which is the order those two things should happen in.
     """
     assert batched_event_sources(template) == [], (
         "a batched event source now exists: delete this test, and make sure "
@@ -126,17 +133,30 @@ def test_the_functions_are_not_wired_yet_and_that_is_recorded(
 # -- the seam P4 asked for -------------------------------------------------
 
 
-def test_the_names_p4_owns_are_parameters_not_literals(template: dict[str, Any]) -> None:
-    """O-2 is unanswered, so the template takes the names rather than inventing
-    them. A default here would be a decision nobody made.
+def test_the_published_event_actually_reaches_the_queue(template: dict[str, Any]) -> None:
+    """O-2 is answered, so this is no longer about names.
+
+    It was once: the template took the queue and table names as parameters
+    because P4 had not settled them, and a default would have been a decision
+    nobody made. WP-01 settled them -- the canonical ``AppTable`` and
+    ``maxReceiveCount: 5`` are its answers -- so the question is now whether the
+    routing those names produced is actually joined up.
+
+    The publisher puts an event on the bus and the consumer reads the queue.
+    Nothing in either module can tell that a rule connects the two, so a
+    mismatch here is invisible in Python and shows up as jobs that are committed
+    and then never run.
     """
-    parameters = template.get("Parameters", {})
-    for required in ("TableName", "EventBusName", "JobQueueName", "JobDeadLetterQueueName"):
-        assert required in parameters, f"{required} should be a parameter"
-        assert "Default" not in parameters[required], (
-            f"{required} has a default; a made-up name is a placeholder, and a "
-            "placeholder is what P4 asked not to be given"
-        )
+    declared = resources(template)
+    rule = declared["JobRule"]["Properties"]
+    assert rule["EventBusName"] == "ProofPathEventBus", "the rule listens on the wrong bus"
+    targets = [target["Arn"] for target in rule["Targets"]]
+    assert "JobQueue.Arn" in targets, f"the rule does not target the job queue: {targets}"
+
+    # The queue only accepts EventBridge from this rule; a wider policy would
+    # let any rule in the account enqueue work.
+    statement = declared["JobQueuePolicy"]["Properties"]["PolicyDocument"]["Statement"][0]
+    assert statement["Condition"]["ArnEquals"]["aws:SourceArn"] == "JobRule.Arn"
 
 
 # -- the queue that makes the redelivery argument true ---------------------
@@ -153,7 +173,7 @@ def test_the_queue_dead_letters_rather_than_redelivering_for_ever(
     queue = resources(template)["JobQueue"]
     redrive = queue["Properties"]["RedrivePolicy"]
     assert "deadLetterTargetArn" in redrive
-    assert redrive["maxReceiveCount"] == "MaxReceiveCount"
+    assert redrive["maxReceiveCount"] == 5, "WP-01 settled this at 5 (O-2)"
 
 
 def test_the_dead_letter_queue_keeps_messages_long_enough_to_be_found(
@@ -176,7 +196,7 @@ def test_the_table_declares_the_keys_the_adapter_writes(template: dict[str, Any]
     """
     from services.adapters.dynamo_state_store import PARTITION_ATTRIBUTE, SORT_ATTRIBUTE
 
-    table = resources(template)["ProofPathTable"]["Properties"]
+    table = resources(template)["AppTable"]["Properties"]
     attributes = {entry["AttributeName"] for entry in table["AttributeDefinitions"]}
     assert attributes == {PARTITION_ATTRIBUTE, SORT_ATTRIBUTE}
     schema = {entry["KeyType"]: entry["AttributeName"] for entry in table["KeySchema"]}
@@ -184,5 +204,5 @@ def test_the_table_declares_the_keys_the_adapter_writes(template: dict[str, Any]
 
 
 def test_the_table_has_a_stream_for_the_publisher_to_read(template: dict[str, Any]) -> None:
-    table = resources(template)["ProofPathTable"]["Properties"]
+    table = resources(template)["AppTable"]["Properties"]
     assert table["StreamSpecification"]["StreamViewType"] == "NEW_AND_OLD_IMAGES"
