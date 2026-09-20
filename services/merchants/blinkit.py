@@ -40,11 +40,12 @@ from __future__ import annotations
 import json
 import re
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
 
-from playwright.sync_api import Page, StorageState
+from playwright.sync_api import Browser, BrowserContext, Page, Route, StorageState
 
 from .evidence import LocalDiskEvidenceSink
 from .fees import blinkit_estimated_fees, placeholder_line_hash
@@ -92,6 +93,18 @@ _zone_id_cache: dict[str, str] = {}
 # screenshots are actually taken from, so it has to be captured here and
 # carried forward rather than assumed visible in the evidence screenshot.
 _address_hint_cache: dict[str, str] = {}
+
+# The precise (float) coordinate Blinkit's own /location/info response
+# returns for a committed pincode. Confirmed live (2026-09-20): Blinkit's
+# manual pincode-entry flow stores a *truncated integer* lat/lon in its own
+# client state (e.g. 28/77 instead of 28.6327426/77.2195969) and sends that
+# truncated pair as request headers on every subsequent catalog call --
+# its own backend then genuinely rejects the imprecise point as
+# "location not serviceable", independent of anything this connector does.
+# `_new_context()` below installs a request-header correction using this
+# cache so catalog calls carry the precise coordinate Blinkit's own API
+# already gave us, rather than the truncated one its client re-derives.
+_coordinate_cache: dict[str, tuple[float, float]] = {}
 
 # One lock per pincode, created lazily, so concurrent callers for the same
 # pincode block on each other (run the slow flow once) while callers for a
@@ -142,6 +155,11 @@ def _cached_zone_id(pincode: str) -> str | None:
 def _cached_address_hint(pincode: str) -> str | None:
     with _location_state_lock:
         return _address_hint_cache.get(pincode)
+
+
+def _cached_coordinate(pincode: str) -> tuple[float, float] | None:
+    with _location_state_lock:
+        return _coordinate_cache.get(pincode)
 
 
 def _extract_address_hint(page: Page) -> str | None:
@@ -209,7 +227,9 @@ def warm_location(pincode: str, fetch_deadline_seconds: int = 45) -> None:
         merchant = BlinkitMerchant(LocalDiskEvidenceSink())
         location = Location(locality="", pincode=pincode)
         deadline = datetime.now(UTC) + timedelta(seconds=fetch_deadline_seconds)
-        merchant._with_page(deadline, lambda page: merchant._run_location_flow(page, location))
+        merchant._with_page(
+            deadline, lambda page: merchant._run_location_flow(page, location), location
+        )
 
 
 class BlinkitMerchant(PlaywrightMerchant):
@@ -224,37 +244,141 @@ class BlinkitMerchant(PlaywrightMerchant):
                 options["storage_state"] = cached
         return options
 
+    def _new_context(self, browser: Browser, location: Location | None) -> BrowserContext:
+        context = super()._new_context(browser, location)
+        if location is not None:
+            context.route("**/blinkit.com/**", self._correct_location_headers(location.pincode))
+        return context
+
+    @staticmethod
+    def _correct_location_headers(pincode: str) -> Callable[[Route], None]:
+        """Rewrite `lat`/`lon` request headers to the precise coordinate
+        `_coordinate_cache` holds for `pincode`, if any -- see that cache's
+        module-level docstring for why this is needed. Reads the cache live
+        on every request rather than capturing a value at route-install
+        time, since a context created during warm_location() has this
+        route installed before /location/info's response (and therefore the
+        cache entry) exists yet."""
+
+        def handler(route: Route) -> None:
+            headers = route.request.headers
+            if "lat" not in headers or "lon" not in headers:
+                route.continue_()
+                return
+            coordinate = _cached_coordinate(pincode)
+            if coordinate is None:
+                route.continue_()
+                return
+            lat, lon = coordinate
+            route.continue_(headers={**headers, "lat": str(lat), "lon": str(lon)})
+
+        return handler
+
     def _run_location_flow(self, page: Page, location: Location) -> None:
         """The actual UI flow. Only ever invoked via warm_location()'s lock,
         so it never runs twice concurrently for the same pincode."""
+        coordinate: dict[str, float] = {}
+
+        def _capture_coordinate(response: Any) -> None:
+            if "/location/info" not in response.url:
+                return
+            try:
+                body = response.json()
+                coordinate["lat"] = body["coordinate"]["lat"]
+                coordinate["lon"] = body["coordinate"]["lon"]
+            except Exception:  # noqa: BLE001 - response shape unexpected; leave uncorrected
+                return
+
+        page.on("response", _capture_coordinate)
+
         self._goto(page, "https://blinkit.com/", wait_until="load")
+        # Confirmed live (2026-09-20): these selectors render via
+        # client-side hydration *after* the `load` event this connector
+        # waits for above, not on it -- 5s was reliably enough time on a
+        # fast local connection but timed out waiting for "Select manually"
+        # from a Fargate task in ap-south-1 (slower CPU/network path, same
+        # class of race as the location-commit timing fixed elsewhere in
+        # this flow). Bounded generously rather than tuned to one
+        # environment's observed speed.
         try:
-            page.click('[data-qa-id="close-button"]', timeout=3_000)
+            page.click('[data-qa-id="close-button"]', timeout=8_000)
         except Exception:  # noqa: BLE001 - app-install banner isn't always shown
             pass
         try:
-            page.click('img[alt="Close Slider"]', timeout=5_000)
+            page.click('img[alt="Close Slider"]', timeout=10_000)
         except Exception:  # noqa: BLE001 - download-app slider isn't always shown
             pass
-        page.click('div[class*="SelectManually"]', timeout=5_000)
+        page.click('div[class*="SelectManually"]', timeout=15_000)
         page.fill('input[name="select-locality"]', location.pincode)
         page.wait_for_selector(
-            'div[class*="LocationSearchList__LocationListContainer"]', timeout=5_000
+            'div[class*="LocationSearchList__LocationListContainer"]', timeout=15_000
         )
         page.click('div[class*="LocationSearchList__LocationListContainer"]')
         # Location commit is an async client-side action with no element to
-        # await; a short settle time was needed live before navigating on.
-        page.wait_for_timeout(1_500)
+        # await. A fixed sleep here previously raced two independent signals
+        # under higher-latency network paths (confirmed live 2026-09-20:
+        # reliable on a low-latency connection, silently wrong from a
+        # Fargate task in ap-south-1 -- both the /location/info network
+        # response below and, separately, the location bar's own DOM text
+        # re-render lagging behind it) -- poll for both real observable
+        # conditions instead of guessing a fixed duration for either.
+        deadline_ms = 8_000
+        waited_ms = 0
+        step_ms = 250
+        address_bar_ready = (
+            "() => { const el = document.querySelector('div[class*=\"LocationBar__Subtitle\"]');"
+            " const text = el && el.innerText && el.innerText.trim();"
+            " return !!text && text !== 'Select Location'; }"
+        )
+        while waited_ms < deadline_ms and (
+            "lat" not in coordinate or not page.evaluate(address_bar_ready)
+        ):
+            page.wait_for_timeout(step_ms)
+            waited_ms += step_ms
+
+        # Confirmed live (2026-09-20): Blinkit's own /location/info response
+        # carries the precise coordinate for the committed pincode, but its
+        # client then stores a truncated integer version and sends *that* on
+        # every catalog request -- caching the precise value here (before it
+        # is needed below) is what lets _correct_location_headers() rewrite
+        # those requests back to a serviceable coordinate.
+        if "lat" in coordinate:
+            with _location_state_lock:
+                _coordinate_cache[location.pincode] = (coordinate["lat"], coordinate["lon"])
+
+        # address_hint's element only exists on the homepage right after
+        # commit (see _extract_address_hint's docstring) -- capture it before
+        # navigating away below, now that the poll above confirmed it's
+        # actually rendered rather than still showing the pre-commit
+        # placeholder.
+        address_hint = _extract_address_hint(page)
+        if address_hint is not None:
+            with _location_state_lock:
+                _address_hint_cache[location.pincode] = address_hint
+
+        # Confirmed live (2026-09-20): the `merchant` (dark-store) id isn't
+        # assigned by the location-commit click itself -- it's a side effect
+        # of the *next* catalog request. This warm-up visits one (a
+        # single-character throwaway query, not a real search) so the
+        # session has a merchant id cached before any real search() call.
+        # Needs the coordinate correction above already active, since this
+        # request would otherwise hit the same truncated-coordinate rejection.
+        self._goto(page, "https://blinkit.com/s/?q=a", wait_until="load")
+        try:
+            page.wait_for_function(
+                "() => { try { return !!JSON.parse(localStorage.getItem('merchant') || '{}').id; }"
+                " catch (e) { return false; } }",
+                timeout=8_000,
+            )
+        except Exception:  # noqa: BLE001 - proceed with whatever landed; extraction handles None
+            pass
+
         state = page.context.storage_state()
         _cache_state(location.pincode, state)
         zone_id = _extract_zone_id(state)
         if zone_id is not None:
             with _location_state_lock:
                 _zone_id_cache[location.pincode] = zone_id
-        address_hint = _extract_address_hint(page)
-        if address_hint is not None:
-            with _location_state_lock:
-                _address_hint_cache[location.pincode] = address_hint
 
     def search(
         self, location: Location, item: ItemQuery, deadline: datetime
@@ -289,7 +413,11 @@ class BlinkitMerchant(PlaywrightMerchant):
         self._goto(page, search_url, wait_until="load")
 
         try:
-            page.wait_for_selector('div[role="button"][id] .tw-text-300', timeout=10_000)
+            # Bounded generously (see _run_location_flow's comment on the
+            # same rendering-speed variance) so a slow render on a
+            # higher-latency network path isn't misclassified as
+            # genuinely-zero-results below.
+            page.wait_for_selector('div[role="button"][id] .tw-text-300', timeout=15_000)
         except Exception:  # noqa: BLE001 - genuinely no results, not a stale selector
             return MerchantError(
                 merchant=self.name,
