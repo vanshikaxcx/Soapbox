@@ -737,7 +737,7 @@ Resources:
             TableName: !Ref AppTable
             StreamName: !Select [3, !Split ["/", !GetAtt AppTable.StreamArn]]
         - EventBridgePutEventsPolicy:
-            StatementId: PublishOutboxEvents
+            EventBusName: !Ref ProofPathEventBus
       Events:
         OutboxRows:
           Type: DynamoDB
