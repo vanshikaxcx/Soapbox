@@ -9,9 +9,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from services.application.fakes import SequentialIds
-
 from services.agent.extract import run_extraction
+from services.application.fakes import SequentialIds
 from services.domain.intent import MAX_ITEMS, Flexibility
 from services.extraction.fake import FIXTURE_IMAGE_MILK_AND_RICE
 from services.merchants.models import Mode

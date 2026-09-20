@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from services.application.fakes import SequentialIds
-
 from services.agent.compare import (
     ComparisonOutcome,
     UnresolvedItem,
@@ -19,6 +17,7 @@ from services.agent.compare import (
     run_comparison,
     to_domain_observation,
 )
+from services.application.fakes import SequentialIds
 from services.domain.basket import BasketLine
 from services.domain.errors import DomainError
 from services.domain.ids import Mode
@@ -47,6 +46,7 @@ def raw_observation(
     pack_size: float = 5.0,
     unit: str = "kg",
     in_stock: bool = True,
+    location_completeness: str = "verified",
 ) -> RawObservation:
     return RawObservation(
         merchant=merchant,
@@ -57,6 +57,7 @@ def raw_observation(
         unit=unit,
         price_paise=price_paise,
         in_stock=in_stock,
+        location_completeness=location_completeness,
         verified_location=LOCATION,
         fetch_time=NOW,
         evidence_key="evidence-key",
@@ -287,14 +288,18 @@ def test_resolve_item_prefers_exact_match_over_substitution() -> None:
 # -- run_comparison -----------------------------------------------------------
 
 
-def test_run_comparison_reports_no_definitive_winner_when_both_baskets_are_only_estimated() -> None:
-    """The realistic case for two *live* merchants: WP-04's connectors always
-    return a fee assessment labeled ``"estimated"``, never ``"complete"`` --
-    so per WP-02's honesty rule (see `basket_test.py`'s
-    `test_two_estimated_baskets_are_not_comparable`), neither basket's total
-    can be proven cheaper than the other's, however large the price gap.
-    Each basket's known subtotal is still reported for display; the
-    comparison just refuses to call a winner it cannot prove.
+def test_run_comparison_reports_no_definitive_winner_when_estimated_bands_overlap() -> None:
+    """Two *live* merchants whose fee assessments are both ``"estimated"``
+    (never ``"complete"``, WP-04's live connectors' honest default) can still
+    tie: per WP-02-A1 (see `basket_test.py`'s
+    `test_two_estimated_baskets_do_not_compare_when_their_bands_overlap`), a
+    verified item price sets each basket's floor and an estimated charge sets
+    its ceiling, and only a disjoint [floor, ceiling] band is provable. Here
+    Zepto's own ceiling (91,000) sits above Blinkit's floor (90,000) and
+    Blinkit's ceiling (93,000) sits above Zepto's floor (91,000), so the bands
+    overlap and neither total can be proven cheaper. Each basket's known
+    subtotal is still reported for display; the comparison just refuses to
+    call a winner it cannot prove.
     """
     item = an_item(name="rice", quantity=Quantity.of(5, Unit.KG))
     intent = an_intent(items=(item,))
@@ -314,11 +319,11 @@ def test_run_comparison_reports_no_definitive_winner_when_both_baskets_are_only_
         catalog={
             "rice": [
                 raw_observation(
-                    merchant="zepto", sku="z-rice", name="Fortune Rice", price_paise=48_000
+                    merchant="zepto", sku="z-rice", name="Fortune Rice", price_paise=91_000
                 )
             ]
         },
-        fee=fee("zepto", subtotal_paise=48_000, delivery_paise=0),
+        fee=fee("zepto", subtotal_paise=91_000, delivery_paise=0),
     )
     outcome = run_comparison(
         intent=intent,
@@ -335,7 +340,7 @@ def test_run_comparison_reports_no_definitive_winner_when_both_baskets_are_only_
     assert by_merchant["zepto"].is_complete
     zepto_basket = by_merchant["zepto"].basket
     assert zepto_basket is not None
-    assert zepto_basket.totals.known_subtotal.amount_paise == 48_000
+    assert zepto_basket.totals.known_subtotal.amount_paise == 91_000
 
 
 def test_run_comparison_picks_a_winner_when_one_basket_has_no_open_charges() -> None:
