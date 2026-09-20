@@ -1,19 +1,542 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: ProofPath WP-00 public health baseline.
+Description: >-
+  ProofPath WP-00 public health baseline, extended by WP-01 with the one
+  disposable checkpoint record's authenticated read/write path
+  (AC-01-01/AC-01-03). Per docs/specs/WP-01-cloud-viability-checkpoint.md's
+  "minimal stack boundaries" decision, WP-01's checkpoint resources stay in
+  this one template rather than a separate stack file.
+
+Parameters:
+  # Pinned per docs/specs/WP-01-cloud-viability-checkpoint.md's Open
+  # questions items 2-3, re-verified live against `aws bedrock
+  # get-foundation-model-availability` on P1's account 2026-09-19: the
+  # spec's original choice, amazon.nova-pro-v1:0, only supports
+  # `inferenceTypesSupported: ["INFERENCE_PROFILE"]` in ap-south-1 -- a bare
+  # model ID invocation (this template's and AC-01-02's exact requirement,
+  # to avoid a cross-region inference profile ARN) fails with
+  # bedrock:ValidationException.
+  #
+  # meta.llama3-70b-instruct-v1:0 is the real, deliberate pick (2026-09-19,
+  # P1's explicit decision, superseding the meta.llama3-8b-instruct-v1:0
+  # liveness-only placeholder this parameter previously held): confirmed
+  # ON_DEMAND-capable, fully AVAILABLE/AUTHORIZED, and a real `converse()`
+  # call against it produced correct structured-JSON grocery-list
+  # extraction including a substitution/repair instruction
+  # ("if Maggi unavailable get Top Ramen") -- see
+  # docs/evidence/checkpoint.md's AC-01-02 section for the exact test.
+  # anthropic.claude-3-haiku/-sonnet were evaluated and are likely a
+  # quality upgrade over any Meta Llama model for this repo's
+  # schema-constrained-agent-output requirement, but both currently fail
+  # with `ResourceNotFoundException: Model use case details have not been
+  # submitted for this account` -- that requires P1 to submit Anthropic's
+  # "model use case" form in the Bedrock console herself (not doable via
+  # CLI/API); revisit once that is done. This remains extraction/voice
+  # model selection only, not a claim that no better choice exists.
+  BedrockModelId:
+    Type: String
+    Default: meta.llama3-70b-instruct-v1:0
+  PollyVoiceId:
+    Type: String
+    Default: Kajal
+  PollyEngine:
+    Type: String
+    Default: neural
+  TranscribeLanguageCode:
+    Type: String
+    Default: en-IN
+
+  # AC-01-04: the Fargate Playwright task needs outbound internet access to
+  # reach real merchant domains. Using this account's existing default VPC's
+  # public subnets (AWS-managed, already present, already routed to an
+  # Internet Gateway) with `AssignPublicIp: ENABLED` avoids provisioning a
+  # NAT Gateway entirely -- a NAT Gateway bills hourly (~$32/month)
+  # regardless of task activity and this spec explicitly flags it as the
+  # single largest standing-cost risk this package could create if
+  # forgotten (see this file's header and docs/specs/WP-01's Observability
+  # section). No new VPC/subnet is created here; a default VPC not existing
+  # on this account is a real deploy-time blocker, not silently worked
+  # around.
+  CheckpointVpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: >-
+      The account's default VPC (verify with `aws ec2 describe-vpcs
+      --filters Name=is-default,Values=true` before deploying).
+  CheckpointPublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >-
+      One or more public subnets of CheckpointVpcId, each with
+      `MapPublicIpOnLaunch: true` (verify with `aws ec2 describe-subnets
+      --filters Name=default-for-az,Values=true`).
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 10
+
 Resources:
   ProofPathApi:
     Type: AWS::Serverless::Api
     Properties:
       StageName: v1
-      DefinitionUri: ../contracts/openapi.yaml
+      # DefinitionBody below is generated FROM contracts/openapi.yaml (the
+      # one authored, hand-edited API contract) by
+      # scripts/generate-checkpoint-api-definition.mjs -- do not hand-edit
+      # the content between the BEGIN/END markers; edit
+      # contracts/openapi.yaml and re-run that script instead (it also runs
+      # automatically as part of `pwsh ./scripts/proofpath.ps1 build`).
+      #
+      # Why a generated inline DefinitionBody instead of `DefinitionUri:
+      # ../contracts/openapi.yaml`: two real, verified problems come from
+      # DefinitionUri here. (1) SAM's implicit-API merge, which injects
+      # `x-amazon-apigateway-integration` for each Lambda's `Events: Api:`
+      # config, reliably works only against Swagger 2.0 content -- against
+      # contracts/openapi.yaml's OpenAPI 3.0.3 (required by
+      # scripts/check-openapi-aws-subset.mjs and the web codegen step), no
+      # integration is injected and the deployed API fails with "No
+      # integration defined for method". (2) SAM's `Auth` property on
+      # AWS::Serverless::Api only works with an inline `DefinitionBody`, and
+      # CloudFormation does not evaluate intrinsics (e.g. the Cognito User
+      # Pool's ARN) inside a DefinitionUri-referenced file's content at all.
+      # `DefinitionBody: Fn::Transform: AWS::Include` was tried to bridge
+      # this and rejected by `sam validate` ("Unable to add Auth
+      # configuration because 'DefinitionBody' does not contain a valid
+      # Swagger definition" -- SAM's local Auth-merging step does not
+      # resolve CloudFormation transforms before looking for route content).
+      # The generator produces a Swagger 2.0 equivalent with a raw
+      # `x-amazon-apigateway-authorizer` Cognito extension and explicit
+      # `x-amazon-apigateway-integration` blocks (using literal `Fn::Sub`/
+      # `Fn::GetAtt`, resolved because this is now literal template content,
+      # not an external reference), so contracts/openapi.yaml stays the one
+      # authored contract with no manual duplication of its routes.
+      # _resolve_owner_from_cognito_claims in services/api/checkpoint.py
+      # already assumes the target end state (API Gateway populates
+      # requestContext.authorizer.claims before the Lambda runs); this
+      # wiring is what actually populates that claim.
+      # GENERATED-DEFINITION-BODY-BEGIN
+      DefinitionBody:
+        swagger: '2.0'
+        info:
+          title: ProofPath API
+          version: 0.0.0
+        schemes:
+          - https
+        securityDefinitions:
+          CheckpointCognitoAuthorizer:
+            type: apiKey
+            name: Authorization
+            in: header
+            x-amazon-apigateway-authtype: cognito_user_pools
+            x-amazon-apigateway-authorizer:
+              type: cognito_user_pools
+              providerARNs:
+                - Fn::GetAtt:
+                    - CheckpointUserPool
+                    - Arn
+        paths:
+          /checkpoints/{checkpointId}:
+            get:
+              operationId: getCheckpoint
+              summary: WP-01 ONLY, TEMPORARY. Read the one disposable owner-scoped checkpoint evidence record used to prove Cognito/API Gateway/Lambda/DynamoDB work together. Removed or superseded once WP-02/WP-03 define real intent records; never a stable product endpoint.
+              parameters:
+                - name: checkpointId
+                  in: path
+                  required: true
+                  type: string
+                  minLength: 1
+              responses:
+                '200':
+                  description: The checkpoint record exists and is owned by the caller.
+                  headers:
+                    X-Request-ID:
+                      description: Opaque server-generated request identifier.
+                      type: string
+                      minLength: 1
+                  schema:
+                    $ref: '#/definitions/CheckpointSuccessResponse'
+                '404':
+                  description: No such record, or the record is not owned by the caller.
+                  headers:
+                    X-Request-ID:
+                      description: Opaque server-generated request identifier.
+                      type: string
+                      minLength: 1
+                  schema:
+                    $ref: '#/definitions/ErrorResponse'
+                '500':
+                  description: An unexpected error was safely mapped by the application.
+                  headers:
+                    X-Request-ID:
+                      description: Opaque server-generated request identifier.
+                      type: string
+                      minLength: 1
+                  schema:
+                    $ref: '#/definitions/ErrorResponse'
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri:
+                  Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetCheckpointFunction.Arn}/invocations
+              security:
+                - CheckpointCognitoAuthorizer: []
+            put:
+              operationId: putCheckpoint
+              summary: WP-01 ONLY, TEMPORARY. Idempotent owner-scoped write of the one disposable checkpoint evidence record. Proves the product-wide idempotency-key/expected-version mutation rule end to end; not a preview of any real WP-02+ record contract.
+              parameters:
+                - name: checkpointId
+                  in: path
+                  required: true
+                  type: string
+                  minLength: 1
+                - name: Idempotency-Key
+                  in: header
+                  required: true
+                  description: Reusable non-empty idempotency key for future mutations.
+                  type: string
+                  minLength: 1
+                - name: body
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/CheckpointWriteRequest'
+              responses:
+                '200':
+                  description: The checkpoint record was created or updated.
+                  headers:
+                    X-Request-ID:
+                      description: Opaque server-generated request identifier.
+                      type: string
+                      minLength: 1
+                  schema:
+                    $ref: '#/definitions/CheckpointSuccessResponse'
+                '404':
+                  description: The record is not owned by the caller.
+                  headers:
+                    X-Request-ID:
+                      description: Opaque server-generated request identifier.
+                      type: string
+                      minLength: 1
+                  schema:
+                    $ref: '#/definitions/ErrorResponse'
+                '409':
+                  description: Stale expected_version, or the same Idempotency-Key was reused with a different payload.
+                  headers:
+                    X-Request-ID:
+                      description: Opaque server-generated request identifier.
+                      type: string
+                      minLength: 1
+                  schema:
+                    $ref: '#/definitions/ErrorResponse'
+                '422':
+                  description: The request body failed validation.
+                  headers:
+                    X-Request-ID:
+                      description: Opaque server-generated request identifier.
+                      type: string
+                      minLength: 1
+                  schema:
+                    $ref: '#/definitions/ErrorResponse'
+                '500':
+                  description: An unexpected error was safely mapped by the application.
+                  headers:
+                    X-Request-ID:
+                      description: Opaque server-generated request identifier.
+                      type: string
+                      minLength: 1
+                  schema:
+                    $ref: '#/definitions/ErrorResponse'
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri:
+                  Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PutCheckpointFunction.Arn}/invocations
+              security:
+                - CheckpointCognitoAuthorizer: []
+            options:
+              summary: CORS preflight (no application logic; handled entirely by API Gateway).
+              responses:
+                '200':
+                  description: CORS preflight response.
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+              x-amazon-apigateway-integration:
+                type: mock
+                requestTemplates:
+                  application/json: '{"statusCode": 200}'
+                responses:
+                  default:
+                    statusCode: '200'
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Origin: '''*'''
+                      method.response.header.Access-Control-Allow-Methods: '''GET,PUT,OPTIONS'''
+                      method.response.header.Access-Control-Allow-Headers: '''Content-Type,Authorization,Idempotency-Key'''
+          /health:
+            get:
+              operationId: getHealth
+              summary: Return the public liveness result.
+              parameters: []
+              responses:
+                '200':
+                  description: The service is live.
+                  headers:
+                    X-Request-ID:
+                      description: Opaque server-generated request identifier.
+                      type: string
+                      minLength: 1
+                  schema:
+                    $ref: '#/definitions/HealthSuccessResponse'
+                '500':
+                  description: An unexpected error was safely mapped by the application.
+                  headers:
+                    X-Request-ID:
+                      description: Opaque server-generated request identifier.
+                      type: string
+                      minLength: 1
+                  schema:
+                    $ref: '#/definitions/ErrorResponse'
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri:
+                  Fn::Sub: arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${HealthFunction.Arn}/invocations
+            options:
+              summary: CORS preflight (no application logic; handled entirely by API Gateway).
+              responses:
+                '200':
+                  description: CORS preflight response.
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+              x-amazon-apigateway-integration:
+                type: mock
+                requestTemplates:
+                  application/json: '{"statusCode": 200}'
+                responses:
+                  default:
+                    statusCode: '200'
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Origin: '''*'''
+                      method.response.header.Access-Control-Allow-Methods: '''GET,OPTIONS'''
+                      method.response.header.Access-Control-Allow-Headers: '''Content-Type,Authorization,Idempotency-Key'''
+        definitions:
+          OpaqueId:
+            type: string
+            minLength: 1
+            description: Opaque identifier. Clients must not parse it or infer its meaning.
+          UtcTimestamp:
+            type: string
+            format: date-time
+            description: RFC 3339 timestamp normalized to UTC by servers.
+          CurrencyCode:
+            type: string
+            enum:
+              - INR
+          MoneyINR:
+            type: object
+            additionalProperties: false
+            required:
+              - amount_paise
+              - currency
+            properties:
+              amount_paise:
+                type: integer
+                minimum: 0
+                maximum: 9007199254740991
+              currency:
+                $ref: '#/definitions/CurrencyCode'
+          Version:
+            type: integer
+            minimum: 0
+            maximum: 9007199254740991
+          Revision:
+            type: integer
+            minimum: 0
+            maximum: 9007199254740991
+          JobStatus:
+            type: string
+            enum:
+              - queued
+              - running
+              - succeeded
+              - failed
+          AsyncAccepted:
+            type: object
+            additionalProperties: false
+            required:
+              - job_id
+              - resource_id
+              - status_url
+            properties:
+              job_id:
+                $ref: '#/definitions/OpaqueId'
+              resource_id:
+                $ref: '#/definitions/OpaqueId'
+              status_url:
+                type: string
+                format: uri
+          CheckpointValue:
+            type: string
+            minLength: 1
+            maxLength: 256
+            description: WP-01 disposable checkpoint evidence payload. Never a real product record; content is arbitrary and meaningless outside the checkpoint run.
+          CheckpointWriteRequest:
+            type: object
+            additionalProperties: false
+            required:
+              - expected_version
+              - value
+            properties:
+              expected_version:
+                $ref: '#/definitions/Version'
+              value:
+                $ref: '#/definitions/CheckpointValue'
+          CheckpointRecord:
+            type: object
+            additionalProperties: false
+            required:
+              - checkpoint_id
+              - owner_id
+              - value
+              - version
+              - created_at
+              - updated_at
+            properties:
+              checkpoint_id:
+                $ref: '#/definitions/OpaqueId'
+              owner_id:
+                $ref: '#/definitions/OpaqueId'
+              value:
+                $ref: '#/definitions/CheckpointValue'
+              version:
+                $ref: '#/definitions/Version'
+              created_at:
+                $ref: '#/definitions/UtcTimestamp'
+              updated_at:
+                $ref: '#/definitions/UtcTimestamp'
+          CheckpointSuccessResponse:
+            type: object
+            additionalProperties: false
+            required:
+              - data
+              - request_id
+            properties:
+              data:
+                $ref: '#/definitions/CheckpointRecord'
+              request_id:
+                $ref: '#/definitions/OpaqueId'
+          HealthData:
+            type: object
+            additionalProperties: false
+            required:
+              - status
+            properties:
+              status:
+                type: string
+                enum:
+                  - ok
+          HealthSuccessResponse:
+            type: object
+            additionalProperties: false
+            required:
+              - data
+              - request_id
+            properties:
+              data:
+                $ref: '#/definitions/HealthData'
+              request_id:
+                $ref: '#/definitions/OpaqueId'
+          ErrorBody:
+            type: object
+            additionalProperties: false
+            required:
+              - code
+              - message
+              - details
+            properties:
+              code:
+                type: string
+                pattern: ^[a-z][a-z0-9_]*$
+              message:
+                type: string
+              details:
+                type: object
+                additionalProperties: true
+          ErrorResponse:
+            type: object
+            additionalProperties: false
+            required:
+              - error
+              - request_id
+            properties:
+              error:
+                $ref: '#/definitions/ErrorBody'
+              request_id:
+                $ref: '#/definitions/OpaqueId'
+      # GENERATED-DEFINITION-BODY-END
+
+  # RESOLVED (code-review finding 2, 2026-09-19): API Gateway's Cognito
+  # authorizer rejects an unauthenticated/invalid-token request *before* the
+  # Lambda (and this API's mock CORS integration response) ever runs, so a
+  # browser calling this API from the deployed web origin with a missing/bad
+  # token would see an opaque CORS failure instead of the real 401/403.
+  # API Gateway's "gateway response" mechanism runs independently of any
+  # backend integration specifically to cover this. SAM's `GatewayResponses`
+  # shorthand property was tried first and reproduces the same
+  # DefinitionBody/Fn::Transform merge bug this template's ProofPathApi
+  # comment already documents for SAM's `Auth` property (`sam validate`
+  # fails with "Unable to add Auth configuration because 'DefinitionBody'
+  # does not contain a valid Swagger definition"). The working fix instead
+  # uses the raw AWS::ApiGateway::GatewayResponse resource type below: it
+  # attaches to ProofPathApi by RestApiId as an ordinary sibling
+  # CloudFormation resource, entirely outside SAM's DefinitionBody-merging
+  # step. UNAUTHORIZED covers the missing/invalid bearer token case the
+  # Cognito authorizer actually returns; DEFAULT_4XX is a catch-all.
+  # `sam validate --lint` reports cfn-lint rule W3660 ("multiple resources
+  # modifying a Rest API definition") against both -- a known false positive
+  # for this legitimate pattern, not a structural error.
+  #
+  # KNOWN GAP, not fixed here: the generated DefinitionBody's own CORS mock
+  # OPTIONS integrations above still return a wildcard
+  # Access-Control-Allow-Origin: '*' (see scripts/generate-checkpoint-api-
+  # definition.mjs), which is a real deviation from CLAUDE.md's "use strict
+  # CORS with an explicit origin allowlist" rule. That wildcard is generated
+  # content, not hand-editable here; fixing it means updating the generator
+  # script to emit the real deployed origin below, then re-running it -- out
+  # of scope for this specific gateway-response fix.
+  CheckpointApiUnauthorizedGatewayResponse:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref ProofPathApi
+      ResponseType: UNAUTHORIZED
+      ResponseParameters:
+        gatewayresponse.header.Access-Control-Allow-Origin: !Sub "'https://main.${CheckpointWebApp.DefaultDomain}'"
+        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,PUT,OPTIONS'"
+        gatewayresponse.header.Access-Control-Allow-Headers: "'Authorization,Content-Type,Idempotency-Key'"
+
+  CheckpointApiDefault4xxGatewayResponse:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref ProofPathApi
+      ResponseType: DEFAULT_4XX
+      ResponseParameters:
+        gatewayresponse.header.Access-Control-Allow-Origin: !Sub "'https://main.${CheckpointWebApp.DefaultDomain}'"
+        gatewayresponse.header.Access-Control-Allow-Methods: "'GET,PUT,OPTIONS'"
+        gatewayresponse.header.Access-Control-Allow-Headers: "'Authorization,Content-Type,Idempotency-Key'"
+
   HealthFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: ../services/api
       Handler: health.lambda_handler
-      Runtime: python3.12
-      Timeout: 10
       Events:
         Health:
           Type: Api
@@ -21,3 +544,644 @@ Resources:
             RestApiId: !Ref ProofPathApi
             Path: /health
             Method: get
+            # No `Auth:` here: security is authored directly per-operation in
+            # the generated DefinitionBody above (raw swagger `security`
+            # keys), not via SAM's `Auth` abstraction -- SAM's `Authorizer:
+            # NONE` requires a `DefaultAuthorizer` on the API resource, which
+            # this template intentionally does not set (every operation
+            # declares its own auth requirement explicitly instead).
+
+  # -- WP-01: the one disposable checkpoint record -------------------------
+  #
+  # AppTable is the first canonical DynamoDB table in the project. Its
+  # PK/SK shape here covers only the one checkpoint item
+  # (USER#<owner_id> / CHECKPOINT#<checkpoint_id>), matching
+  # PROOFPATH-SPEC.md section 6's owner-partition convention without
+  # pre-deciding WP-07's full single-table key design, per WP-01's spec
+  # ("Out of scope" section). Streams are enabled because AC-01-05's durable
+  # job chain (Streams -> publisher -> EventBridge -> SQS -> controller ->
+  # Step Functions -> task) starts here.
+  AppTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      SSESpecification:
+        SSEEnabled: true
+
+  CheckpointUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: proofpath-checkpoint
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+
+  CheckpointUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref CheckpointUserPool
+      ClientName: proofpath-web
+      GenerateSecret: false
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - openid
+        - email
+      SupportedIdentityProviders:
+        - COGNITO
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      # Resolved 2026-09-19 (AC-01-06): real redirect URLs are the deployed
+      # Amplify app's default domain (main branch) plus local dev. Update
+      # if the Amplify app is ever recreated (DefaultDomain is assigned at
+      # creation, not stable across app deletion/recreation).
+      CallbackURLs:
+        - !Sub https://main.${CheckpointWebApp.DefaultDomain}/
+        - http://localhost:5173/
+      LogoutURLs:
+        - !Sub https://main.${CheckpointWebApp.DefaultDomain}/
+        - http://localhost:5173/
+
+  # AC-01-06: Cognito Hosted UI domain, required for the OAuth2 Authorization
+  # Code + PKCE flow (AllowedOAuthFlows: [code] above) -- the browser
+  # redirects here to sign in, not to a URL this project hosts itself.
+  CheckpointUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref CheckpointUserPool
+      Domain: !Sub proofpath-checkpoint-${AWS::AccountId}
+
+  # AC-01-06: deployable UI. Manually deployed (via `aws amplify
+  # create-deployment`/`start-deployment` with web/dist's build output),
+  # not connected to GitHub -- avoids granting Amplify OAuth access to the
+  # repo, which needs the user's explicit sign-off and is out of scope for
+  # an automated deploy/test session.
+  CheckpointWebApp:
+    Type: AWS::Amplify::App
+    Properties:
+      Name: proofpath-checkpoint-web
+      Platform: WEB
+
+  CheckpointWebBranch:
+    Type: AWS::Amplify::Branch
+    Properties:
+      AppId: !GetAtt CheckpointWebApp.AppId
+      BranchName: main
+      EnableAutoBuild: false
+
+  GetCheckpointFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../services/api
+      Handler: checkpoint.lambda_handler_get
+      Environment:
+        Variables:
+          PROOFPATH_APP_TABLE_NAME: !Ref AppTable
+      Policies:
+        # Least-privilege per AC-01-13: exactly the one action this function
+        # calls, scoped to the one table -- not DynamoDBCrudPolicy or any
+        # other broad managed policy standing in for a scoped one.
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !GetAtt AppTable.Arn
+      Events:
+        GetCheckpoint:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ProofPathApi
+            Path: /checkpoints/{checkpointId}
+            Method: get
+
+  PutCheckpointFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../services/api
+      Handler: checkpoint.lambda_handler_put
+      Environment:
+        Variables:
+          PROOFPATH_APP_TABLE_NAME: !Ref AppTable
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+              Resource: !GetAtt AppTable.Arn
+      Events:
+        PutCheckpoint:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ProofPathApi
+            Path: /checkpoints/{checkpointId}
+            Method: put
+
+  # -- WP-01: AC-01-05 durable job chain -------------------------------
+  #
+  # DynamoDB write (AppTable's Streams, already enabled above) ->
+  # CheckpointPublisherFunction -> EventBridge (default bus) ->
+  # CheckpointJobQueue (SQS) -> CheckpointControllerFunction ->
+  # CheckpointStateMachine (Step Functions Standard) ->
+  # CheckpointTaskFunction -> terminal job state. CheckpointJobTriggerFunction
+  # is the one manually-invoked entry point that starts this chain during
+  # evidence capture; it is not registered in contracts/openapi.yaml and is
+  # not reachable through API Gateway (see its module docstring).
+
+  CheckpointJobDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600 # 14 days, the SQS maximum
+
+  CheckpointJobQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 120
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt CheckpointJobDeadLetterQueue.Arn
+        maxReceiveCount: 5
+
+  CheckpointJobQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref CheckpointJobQueue
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt CheckpointJobQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt CheckpointJobRule.Arn
+
+  CheckpointJobRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: default
+      EventPattern:
+        source:
+          - proofpath.checkpoint
+        detail-type:
+          - checkpoint.smoke.v1
+      Targets:
+        - Id: CheckpointJobQueueTarget
+          Arn: !GetAtt CheckpointJobQueue.Arn
+
+  CheckpointTaskFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../services/workers
+      Handler: checkpoint_task.lambda_handler
+      # AC-01-02's three live calls (Bedrock converse, Polly synthesis, a
+      # bounded-20s Transcribe streaming session) run sequentially in one
+      # invocation; 90s matches the product spec's stable "90-second agent
+      # deadline" limit and leaves real headroom over Globals' 10s default,
+      # which would otherwise kill this function mid-call.
+      Timeout: 90
+      Environment:
+        Variables:
+          PROOFPATH_APP_TABLE_NAME: !Ref AppTable
+          PROOFPATH_BEDROCK_MODEL_ID: !Ref BedrockModelId
+          PROOFPATH_POLLY_VOICE_ID: !Ref PollyVoiceId
+          PROOFPATH_POLLY_ENGINE: !Ref PollyEngine
+          PROOFPATH_TRANSCRIBE_LANGUAGE_CODE: !Ref TranscribeLanguageCode
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+              Resource: !GetAtt AppTable.Arn
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              # Foundation models are AWS-owned shared resources, not
+              # account resources -- this ARN form (region + model ID, no
+              # account ID) is how Bedrock model access is scoped; "*"
+              # would grant every model, not just the pinned one.
+              Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}"
+            - Effect: Allow
+              # Neither action supports resource-level restriction (both
+              # are account/region-scoped service operations, not
+              # ARN-addressable resources) -- "*" here is the AWS-documented
+              # ceiling for these two specific actions, not an unreviewed
+              # broad grant standing in for a scoped one.
+              Action:
+                - transcribe:StartStreamTranscription
+                - polly:SynthesizeSpeech
+              Resource: "*"
+
+  CheckpointStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: proofpath-checkpoint
+      Type: STANDARD
+      DefinitionUri: ../workflows/checkpoint.asl.json
+      DefinitionSubstitutions:
+        CheckpointTaskFunctionArn: !GetAtt CheckpointTaskFunction.Arn
+      Policies:
+        # Least-privilege per AC-01-13: this execution role invokes exactly
+        # the one task function, nothing else.
+        - LambdaInvokePolicy:
+            FunctionName: !Ref CheckpointTaskFunction
+        # Step Functions' CloudWatch Logs "vended logs" delivery mechanism
+        # (what `Logging.Destinations` below configures) requires exactly
+        # these actions on the execution role, and AWS documents that most
+        # of them do not support resource-level restriction at all --
+        # Resource: "*" here is the AWS-documented requirement for this
+        # specific mechanism, not an unreviewed broad grant standing in for
+        # a scoped one. See AWS's own IAM policy example for Step Functions
+        # CloudWatch Logging (the logs:PutResourcePolicy/
+        # DescribeResourcePolicies/DescribeLogGroups/CreateLogDelivery/
+        # GetLogDelivery/UpdateLogDelivery/DeleteLogDelivery/
+        # ListLogDeliveries set is the complete, minimal list AWS
+        # publishes for this).
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogDelivery
+                - logs:GetLogDelivery
+                - logs:UpdateLogDelivery
+                - logs:DeleteLogDelivery
+                - logs:ListLogDeliveries
+                - logs:PutResourcePolicy
+                - logs:DescribeResourcePolicies
+                - logs:DescribeLogGroups
+              Resource: "*"
+      Logging:
+        Level: ALL
+        IncludeExecutionData: true
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt CheckpointStateMachineLogGroup.Arn
+
+  CheckpointStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/vendedlogs/states/proofpath-checkpoint
+      RetentionInDays: 14
+
+  CheckpointControllerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../services/workers
+      Handler: controller.lambda_handler
+      Timeout: 30
+      Environment:
+        Variables:
+          PROOFPATH_APP_TABLE_NAME: !Ref AppTable
+          PROOFPATH_CHECKPOINT_STATE_MACHINE_ARN: !Ref CheckpointStateMachine
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+              Resource: !GetAtt AppTable.Arn
+            - Effect: Allow
+              Action:
+                - states:DescribeExecution
+                - states:StartExecution
+              Resource:
+                # DescribeExecution needs the execution-ARN form (a specific
+                # run under this state machine); StartExecution needs the
+                # state-machine-ARN form. Both are scoped to this one
+                # checkpoint state machine, not "*".
+                - !Ref CheckpointStateMachine
+                - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${CheckpointStateMachine.Name}:*"
+      Events:
+        CheckpointJobQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt CheckpointJobQueue.Arn
+            BatchSize: 1
+
+  CheckpointPublisherFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../services/workers
+      Handler: publisher.lambda_handler
+      Environment:
+        Variables:
+          PROOFPATH_APP_TABLE_NAME: !Ref AppTable
+          PROOFPATH_EVENT_BUS_NAME: default
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:UpdateItem
+              Resource: !GetAtt AppTable.Arn
+            - Effect: Allow
+              Action: events:PutEvents
+              Resource: !Sub "arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:event-bus/default"
+      Events:
+        AppTableStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt AppTable.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 10
+            MaximumRetryAttempts: 5
+            # Only new outbox inserts should ever reach the handler; this is
+            # the publisher's own "publication updates cannot loop" guard,
+            # enforced at the event-source-mapping level as well as in code
+            # (see services/workers/publisher.py's is_new_outbox_event).
+            FilterCriteria:
+              Filters:
+                - Pattern: '{"eventName": ["INSERT"]}'
+
+  CheckpointJobTriggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../services/workers
+      Handler: checkpoint_job_trigger.lambda_handler
+      Environment:
+        Variables:
+          PROOFPATH_APP_TABLE_NAME: !Ref AppTable
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+              Resource: !GetAtt AppTable.Arn
+      # No Events block: invoked only via `aws lambda invoke` during
+      # evidence capture, never through API Gateway. See the module's
+      # docstring in services/workers/checkpoint_job_trigger.py.
+
+  CheckpointTaskFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CheckpointTaskFunction}
+      RetentionInDays: 14
+
+  CheckpointControllerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CheckpointControllerFunction}
+      RetentionInDays: 14
+
+  CheckpointPublisherFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CheckpointPublisherFunction}
+      RetentionInDays: 14
+
+  CheckpointJobTriggerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CheckpointJobTriggerFunction}
+      RetentionInDays: 14
+
+  HealthFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${HealthFunction}
+      RetentionInDays: 14
+
+  GetCheckpointFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GetCheckpointFunction}
+      RetentionInDays: 14
+
+  PutCheckpointFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PutCheckpointFunction}
+      RetentionInDays: 14
+
+  # ---------------------------------------------------------------------
+  # AC-01-04: Fargate-hosted Playwright locality/merchant smoke check.
+  # Reuses P2's WP-04 agent image (services/agent/**, services/merchants/**)
+  # rather than a second, competing container -- this package only adds the
+  # infrastructure to build/push/run that already-reviewed image once, run
+  # one real search, and tear the task down. No ECS Service, no ALB, no
+  # standing task: `aws ecs run-task` for one-off invocations only, per
+  # AC-01-09's "no running Fargate task left standing" requirement.
+  # ---------------------------------------------------------------------
+
+  CheckpointAgentEvidenceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub proofpath-checkpoint-evidence-${AWS::AccountId}
+      # Screenshots only, no PII/product-scale data -- a short lifecycle
+      # keeps this from becoming a silent standing-cost/data-retention item
+      # if teardown is ever missed (S3 storage itself is billed regardless
+      # of "hourly" framing, unlike compute, but this bounds it).
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireCheckpointEvidence
+            Status: Enabled
+            ExpirationInDays: 7
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  CheckpointAgentRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: proofpath-checkpoint-agent
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      # Only the one image this checkpoint run needs; an unbounded ECR
+      # repository is a real, if small, standing-cost/drift risk of its own.
+      LifecyclePolicy:
+        LifecyclePolicyText: !Sub |
+          {
+            "rules": [{
+              "rulePriority": 1,
+              "description": "Keep only the 3 most recent images",
+              "selection": {"tagStatus": "any", "countType": "imageCountMoreThan", "countNumber": 3},
+              "action": {"type": "expire"}
+            }]
+          }
+
+  CheckpointAgentSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      # AC-01-04 Fargate agent task. Egress-only by default -- no inbound
+      # rule is baked into this template. The one-off manual smoke test
+      # adds a temporary, scoped ingress rule for the operator's own IP
+      # immediately before the run and revokes it immediately after,
+      # rather than leaving port 8080 open to the world as a standing
+      # template default.
+      GroupDescription: AC-01-04 Fargate agent task security group, egress-only by default.
+      VpcId: !Ref CheckpointVpcId
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+          Description: Outbound to real merchant domains and ECR/S3/CloudWatch endpoints.
+
+  CheckpointAgentLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/proofpath-checkpoint-agent
+      RetentionInDays: 14
+
+  CheckpointAgentCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: proofpath-checkpoint-agent
+      # No Container Insights, no capacity providers beyond Fargate's
+      # default -- a one-off smoke-test cluster needs neither.
+
+  CheckpointAgentTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: proofpath-checkpoint-agent-task-execution
+      Description: >-
+        ECS-assumed role that pulls the container image and ships its logs
+        -- never assumed by application code inside the container itself
+        (see CheckpointAgentTaskRole for that). Least-privilege: scoped to
+        exactly this one repository/log group, not the AWS-managed
+        AmazonECSTaskExecutionRolePolicy's account-wide equivalents.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PullImageAndWriteLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                # ECR's GetAuthorizationToken, like its Public counterpart
+                # used for AC-01-08, does not support resource-level
+                # restriction -- "*" here is the narrowest this action can
+                # be scoped, not an unreviewed broad grant.
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                Resource: !GetAtt CheckpointAgentRepository.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "${CheckpointAgentLogGroup.Arn}:*"
+
+  CheckpointAgentTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: proofpath-checkpoint-agent-task
+      Description: >-
+        Assumed by the running container itself (services/agent/main.py),
+        via its injected credentials -- scoped to exactly the one S3 write
+        permission the agent's evidence sink needs
+        (services/merchants/evidence.py's S3EvidenceSink), nothing else.
+        The agent never calls any other AWS API.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: WriteEvidenceOnly
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub "${CheckpointAgentEvidenceBucket.Arn}/*"
+
+  CheckpointAgentTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: proofpath-checkpoint-agent
+      RequiresCompatibilities:
+        - FARGATE
+      NetworkMode: awsvpc
+      Cpu: "1024"
+      Memory: "3072"
+      ExecutionRoleArn: !GetAtt CheckpointAgentTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt CheckpointAgentTaskRole.Arn
+      ContainerDefinitions:
+        - Name: agent
+          Image: !Sub "${CheckpointAgentRepository.RepositoryUri}:latest"
+          PortMappings:
+            - ContainerPort: 8080
+              Protocol: tcp
+          Environment:
+            - Name: PROOFPATH_EVIDENCE_BUCKET
+              Value: !Ref CheckpointAgentEvidenceBucket
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            # PROOFPATH_AGENT_TOKEN is deliberately not set here as a plain
+            # template value (never a literal secret in source control);
+            # the operator supplies it as a `run-task` container override
+            # at invocation time for this one-off manual smoke test.
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CheckpointAgentLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: agent
+
+Outputs:
+  ApiUrl:
+    Description: Base invoke URL for the deployed API stage.
+    Value: !Sub https://${ProofPathApi}.execute-api.${AWS::Region}.amazonaws.com/v1/
+  AppTableName:
+    Value: !Ref AppTable
+  CheckpointUserPoolId:
+    Value: !Ref CheckpointUserPool
+  CheckpointUserPoolClientId:
+    Value: !Ref CheckpointUserPoolClient
+  CheckpointUserPoolHostedUiDomain:
+    Description: Cognito Hosted UI domain prefix (full URL is https://<this>.auth.<region>.amazoncognito.com).
+    Value: !Ref CheckpointUserPoolDomain
+  WebAppId:
+    Description: Amplify App ID, needed for `aws amplify create-deployment`/`start-deployment`.
+    Value: !GetAtt CheckpointWebApp.AppId
+  WebUrl:
+    Description: The deployed web client's URL (Amplify's default domain, main branch).
+    Value: !Sub https://main.${CheckpointWebApp.DefaultDomain}/
+  CheckpointAgentRepositoryUri:
+    Description: Push the built services/agent/Dockerfile image here before running the task.
+    Value: !GetAtt CheckpointAgentRepository.RepositoryUri
+  CheckpointAgentClusterName:
+    Value: !Ref CheckpointAgentCluster
+  CheckpointAgentTaskDefinitionArn:
+    Value: !Ref CheckpointAgentTaskDefinition
+  CheckpointAgentSecurityGroupId:
+    Description: Add a temporary ingress rule here for the operator's IP before the manual smoke test.
+    Value: !Ref CheckpointAgentSecurityGroup
+  CheckpointAgentEvidenceBucketName:
+    Value: !Ref CheckpointAgentEvidenceBucket
