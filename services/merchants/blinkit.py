@@ -539,6 +539,9 @@ class BlinkitMerchant(PlaywrightMerchant):
             verified_location = location.model_copy(
                 update={"merchant_zone_id": _cached_zone_id(location.pincode)}
             )
+            location_completeness = (
+                "verified" if verified_location.merchant_zone_id else "unverified"
+            )
             return Observation(
                 merchant=self.name,
                 sku=sku,
@@ -549,7 +552,7 @@ class BlinkitMerchant(PlaywrightMerchant):
                 price_paise=int(round(float(price) * 100)),
                 in_stock=int(unavailable_qty) == 0 and int(inventory) > 0,
                 verified_location=verified_location,
-                location_completeness="verified" if verified_location.merchant_zone_id else "unverified",
+                location_completeness=location_completeness,
                 fetch_time=datetime.now(UTC),
                 evidence_key=self._capture_evidence(page.context, page),
                 extraction_status=ExtractionStatus.OK,
