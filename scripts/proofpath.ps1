@@ -242,7 +242,16 @@ function Invoke-OpenApiCheck {
         $requirements = "services/api/requirements.txt"
         & uv export --locked --no-dev --no-emit-project --format requirements-txt --output-file $requirements
         if ($LASTEXITCODE -ne 0) { throw "Locked production requirements export failed." }
-        & git diff --exit-code -- $paths.Generated $requirements
+        # services/workers/requirements.txt is an identical copy, not a second
+        # independent export: SAM's Python builder requires requirements.txt
+        # directly inside each function's own CodeUri (services/api and
+        # services/workers both need boto3/pydantic pinned the same way), and
+        # copying the one canonical export keeps both files provably in sync
+        # rather than risking two hand-maintained/independently-generated
+        # copies drifting apart.
+        $workersRequirements = "services/workers/requirements.txt"
+        Copy-Item -LiteralPath $requirements -Destination $workersRequirements -Force
+        & git diff --exit-code -- $paths.Generated $requirements $workersRequirements
         if ($LASTEXITCODE -ne 0) { throw "Generated OpenAPI declarations or SAM requirements have drifted." }
     }
     finally { Pop-Location }
@@ -334,9 +343,60 @@ function Invoke-Stage4Test {
     Invoke-Stage4TestIntegration
 }
 
+# Any Lambda whose CodeUri is a narrow, function-specific subdirectory
+# (services/api or services/workers, matching WP-00's original fast/simple
+# convention) deploys into a root that never contains a `services` package on
+# its own -- `from services.domain...`/`services.application...` fails at
+# runtime unless that package is injected after `sam build`. Applied to every
+# built function unconditionally (a services/** injection a function does not
+# use is harmless) rather than a hardcoded function-name list, which would
+# need updating every time a WP adds or removes a function -- exactly the
+# staleness that made this step vanish silently once before (see LEARNING.md's
+# 2026-09-19 packaging-investigation entry for the original "why": a
+# repository-root CodeUri and a .samignore-trimmed one were both tried and
+# rejected first).
+function Install-SharedServicesIntoBuild {
+    param([string]$BuildDirectory)
+
+    $wheelDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("proofpath-wheel-" + [Guid]::NewGuid())
+    New-Item -ItemType Directory -Force -Path $wheelDirectory | Out-Null
+    try {
+        Push-Location -LiteralPath $script:RepositoryRoot
+        try {
+            & uv build --wheel --out-dir $wheelDirectory
+            if ($LASTEXITCODE -ne 0) { throw "Building the proofpath wheel (for services/** injection) failed." }
+        }
+        finally { Pop-Location }
+
+        $wheel = Get-ChildItem -LiteralPath $wheelDirectory -Filter "*.whl" | Select-Object -First 1
+        if ($null -eq $wheel) { throw "No wheel produced by 'uv build --wheel'." }
+
+        $functionDirectories = Get-ChildItem -LiteralPath $BuildDirectory -Directory
+        foreach ($functionDirectory in $functionDirectories) {
+            # --no-deps: boto3/pydantic/etc. are already installed into this
+            # same directory from the function's own (generated, hash-pinned)
+            # requirements.txt; this step injects only the local services/**
+            # source tree the wheel carries, not a second, unpinned resolution
+            # of the same third-party packages.
+            # No explicit --python: uv resolves its own project environment,
+            # same as every other `uv` call in this script -- a hardcoded
+            # `.venv/Scripts/python.exe` (this repo's original version of this
+            # step, never merged) only ever worked on Windows and would have
+            # broken the first time it ran on a Linux CI runner.
+            & uv pip install --target $functionDirectory.FullName --no-deps $wheel.FullName
+
+            if ($LASTEXITCODE -ne 0) { throw "Injecting services/** into $($functionDirectory.Name)'s build output failed." }
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $wheelDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Invoke-Stage5SamBuild {
     & sam build --template-file (Join-Path $script:RepositoryRoot "infra/template.yaml") --use-container --build-image $script:SamBuildImage
     if ($LASTEXITCODE -ne 0) { throw "Containerized SAM build failed." }
+    Install-SharedServicesIntoBuild -BuildDirectory (Join-Path $script:RepositoryRoot ".aws-sam/build")
 }
 
 function Invoke-Stage5Build {
