@@ -14,18 +14,26 @@ describe("useConversation", () => {
     const respond: ConversationResponder = vi.fn().mockResolvedValue({
       turn: { id: "a1", role: "assistant", text: "Got it." },
     });
-    const { result } = renderHook(() => useConversation(respond, { newId: sequentialIds() }));
+    const { result } = renderHook(() =>
+      useConversation(respond, { newId: sequentialIds() }),
+    );
 
     act(() => {
       result.current.submit("2 litres of milk");
     });
 
-    expect(result.current.turns).toEqual([{ id: "id-1", role: "shopper", text: "2 litres of milk" }]);
+    expect(result.current.turns).toEqual([
+      { id: "id-1", role: "shopper", text: "2 litres of milk" },
+    ]);
     expect(result.current.submitting).toBe(true);
 
     await waitFor(() => expect(result.current.submitting).toBe(false));
     expect(result.current.turns).toHaveLength(2);
-    expect(result.current.turns[1]).toEqual({ id: "a1", role: "assistant", text: "Got it." });
+    expect(result.current.turns[1]).toEqual({
+      id: "a1",
+      role: "assistant",
+      text: "Got it.",
+    });
     expect(respond).toHaveBeenCalledWith("2 litres of milk", [
       { id: "id-1", role: "shopper", text: "2 litres of milk" },
     ]);
@@ -47,11 +55,18 @@ describe("useConversation", () => {
     let resolveRespond: (() => void) | undefined;
     const respond: ConversationResponder = vi.fn(
       () =>
-        new Promise<{ turn: { id: string; role: "assistant"; text: string } }>((resolve) => {
-          resolveRespond = () => resolve({ turn: { id: "a1", role: "assistant", text: "Got it." } });
-        }),
+        new Promise<{ turn: { id: string; role: "assistant"; text: string } }>(
+          (resolve) => {
+            resolveRespond = () =>
+              resolve({
+                turn: { id: "a1", role: "assistant", text: "Got it." },
+              });
+          },
+        ),
     );
-    const { result } = renderHook(() => useConversation(respond, { newId: sequentialIds() }));
+    const { result } = renderHook(() =>
+      useConversation(respond, { newId: sequentialIds() }),
+    );
 
     act(() => {
       result.current.submit("first");
@@ -59,7 +74,9 @@ describe("useConversation", () => {
     });
 
     expect(respond).toHaveBeenCalledTimes(1);
-    expect(result.current.turns).toEqual([{ id: "id-1", role: "shopper", text: "first" }]);
+    expect(result.current.turns).toEqual([
+      { id: "id-1", role: "shopper", text: "first" },
+    ]);
 
     await act(async () => {
       resolveRespond?.();
@@ -72,10 +89,18 @@ describe("useConversation", () => {
       .fn()
       .mockResolvedValueOnce({
         turn: { id: "a1", role: "assistant", text: "Which milk?" },
-        question: { id: "q1", prompt: "Which milk?", options: [{ id: "o1", label: "Amul" }] },
+        question: {
+          id: "q1",
+          prompt: "Which milk?",
+          options: [{ id: "o1", label: "Amul" }],
+        },
       })
-      .mockResolvedValueOnce({ turn: { id: "a2", role: "assistant", text: "Got it." } });
-    const { result } = renderHook(() => useConversation(respond, { newId: sequentialIds() }));
+      .mockResolvedValueOnce({
+        turn: { id: "a2", role: "assistant", text: "Got it." },
+      });
+    const { result } = renderHook(() =>
+      useConversation(respond, { newId: sequentialIds() }),
+    );
 
     act(() => {
       result.current.submit("milk");
@@ -97,7 +122,9 @@ describe("useConversation", () => {
     const respond: ConversationResponder = vi.fn().mockResolvedValue({
       turn: { id: "a1", role: "assistant", text: "Got it." },
     });
-    const { result } = renderHook(() => useConversation(respond, { newId: sequentialIds() }));
+    const { result } = renderHook(() =>
+      useConversation(respond, { newId: sequentialIds() }),
+    );
 
     // No question has ever been active, so "o1" cannot resolve to anything.
     act(() => {
@@ -113,7 +140,9 @@ describe("useConversation", () => {
     const respond: ConversationResponder = vi.fn().mockResolvedValue({
       turn: { id: "a1", role: "assistant", text: "Got it." },
     });
-    const { result } = renderHook(() => useConversation(respond, { newId: sequentialIds() }));
+    const { result } = renderHook(() =>
+      useConversation(respond, { newId: sequentialIds() }),
+    );
 
     act(() => {
       result.current.answerQuestion("o1");
@@ -130,14 +159,18 @@ describe("useConversation", () => {
     const respond: ConversationResponder = vi
       .fn()
       .mockRejectedValue(new ApiError({ kind: "network", message: "offline" }));
-    const { result } = renderHook(() => useConversation(respond, { newId: sequentialIds() }));
+    const { result } = renderHook(() =>
+      useConversation(respond, { newId: sequentialIds() }),
+    );
 
     act(() => {
       result.current.submit("2 litres of milk");
     });
     await waitFor(() => expect(result.current.submitting).toBe(false));
 
-    expect(result.current.turns).toEqual([{ id: "id-1", role: "shopper", text: "2 litres of milk" }]);
+    expect(result.current.turns).toEqual([
+      { id: "id-1", role: "shopper", text: "2 litres of milk" },
+    ]);
     expect(result.current.error?.kind).toBe("network");
 
     // Re-enabled: a follow-up submit is not blocked by the earlier failure.

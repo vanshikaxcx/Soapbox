@@ -133,10 +133,7 @@ export interface ExtractedQuantity {
 }
 
 export type ExtractedFlexibility =
-  | "exact_only"
-  | "brand_flexible"
-  | "pack_flexible"
-  | "brand_and_pack_flexible";
+  "exact_only" | "brand_flexible" | "pack_flexible" | "brand_and_pack_flexible";
 
 export interface ExtractedItem {
   item_id: string;

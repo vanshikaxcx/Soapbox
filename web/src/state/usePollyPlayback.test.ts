@@ -9,10 +9,15 @@ function fakeAudioRef(playImpl: () => Promise<void>) {
 
 describe("usePollyPlayback", () => {
   it("synthesizes the text and attempts a real play(), reporting no block on success", async () => {
-    const synthesize = vi.fn().mockResolvedValue({ audioUrl: "data:audio/wav;base64,AA==", caption: "Got it." });
+    const synthesize = vi.fn().mockResolvedValue({
+      audioUrl: "data:audio/wav;base64,AA==",
+      caption: "Got it.",
+    });
     const audioRef = fakeAudioRef(() => Promise.resolve());
 
-    const { result } = renderHook(() => usePollyPlayback("Got it.", audioRef, { synthesize }));
+    const { result } = renderHook(() =>
+      usePollyPlayback("Got it.", audioRef, { synthesize }),
+    );
     await waitFor(() => expect(result.current.status).toBe("ready"));
 
     expect(result.current.caption).toBe("Got it.");
@@ -21,10 +26,17 @@ describe("usePollyPlayback", () => {
   });
 
   it("reports autoplayBlocked when the real play() call is rejected", async () => {
-    const synthesize = vi.fn().mockResolvedValue({ audioUrl: "data:audio/wav;base64,AA==", caption: "Got it." });
-    const audioRef = fakeAudioRef(() => Promise.reject(new DOMException("no", "NotAllowedError")));
+    const synthesize = vi.fn().mockResolvedValue({
+      audioUrl: "data:audio/wav;base64,AA==",
+      caption: "Got it.",
+    });
+    const audioRef = fakeAudioRef(() =>
+      Promise.reject(new DOMException("no", "NotAllowedError")),
+    );
 
-    const { result } = renderHook(() => usePollyPlayback("Got it.", audioRef, { synthesize }));
+    const { result } = renderHook(() =>
+      usePollyPlayback("Got it.", audioRef, { synthesize }),
+    );
     await waitFor(() => expect(result.current.autoplayBlocked).toBe(true));
   });
 
@@ -32,20 +44,31 @@ describe("usePollyPlayback", () => {
     const synthesize = vi.fn().mockRejectedValue(new Error("boom"));
     const audioRef = fakeAudioRef(() => Promise.resolve());
 
-    const { result } = renderHook(() => usePollyPlayback("Got it.", audioRef, { synthesize }));
+    const { result } = renderHook(() =>
+      usePollyPlayback("Got it.", audioRef, { synthesize }),
+    );
     await waitFor(() => expect(result.current.status).toBe("error"));
   });
 
   it("re-synthesizes when the text changes", async () => {
     const synthesize = vi
       .fn()
-      .mockResolvedValueOnce({ audioUrl: "data:audio/wav;base64,AA==", caption: "First." })
-      .mockResolvedValueOnce({ audioUrl: "data:audio/wav;base64,BB==", caption: "Second." });
+      .mockResolvedValueOnce({
+        audioUrl: "data:audio/wav;base64,AA==",
+        caption: "First.",
+      })
+      .mockResolvedValueOnce({
+        audioUrl: "data:audio/wav;base64,BB==",
+        caption: "Second.",
+      });
     const audioRef = fakeAudioRef(() => Promise.resolve());
 
-    const { result, rerender } = renderHook(({ text }) => usePollyPlayback(text, audioRef, { synthesize }), {
-      initialProps: { text: "first" },
-    });
+    const { result, rerender } = renderHook(
+      ({ text }) => usePollyPlayback(text, audioRef, { synthesize }),
+      {
+        initialProps: { text: "first" },
+      },
+    );
     await waitFor(() => expect(result.current.caption).toBe("First."));
 
     act(() => {

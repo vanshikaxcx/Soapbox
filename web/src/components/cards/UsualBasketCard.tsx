@@ -8,7 +8,11 @@ export interface UsualBasketCardProps {
   disabled?: boolean;
 }
 
-export function UsualBasketCard({ lastShopperText, onLoad, disabled = false }: UsualBasketCardProps) {
+export function UsualBasketCard({
+  lastShopperText,
+  onLoad,
+  disabled = false,
+}: UsualBasketCardProps) {
   const { saved, savedRelativeTime, isStale, save } = useUsualBasket();
 
   return (
@@ -27,12 +31,14 @@ export function UsualBasketCard({ lastShopperText, onLoad, disabled = false }: U
       {saved !== null && (
         <div className="pp-usual-basket__saved">
           <p>
-            Saved <span className="pp-usual-basket__age">{savedRelativeTime}</span>:
+            Saved{" "}
+            <span className="pp-usual-basket__age">{savedRelativeTime}</span>:
             &ldquo;{saved.text}&rdquo;
           </p>
           {isStale && (
             <p className="pp-usual-basket__stale">
-              That was saved a while ago — loading it runs a fresh search, never old prices.
+              That was saved a while ago — loading it runs a fresh search, never
+              old prices.
             </p>
           )}
           <button

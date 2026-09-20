@@ -13,13 +13,20 @@ describe("useVoiceCapture", () => {
     const getMicStream = vi.fn().mockResolvedValue(stream);
     let emit: ((text: string, isFinal: boolean) => void) | undefined;
     const stopTranscribe = vi.fn();
-    const transcribe = vi.fn((_stream: MediaStream, onUpdate: (text: string, isFinal: boolean) => void) => {
-      emit = onUpdate;
-      return stopTranscribe;
-    });
+    const transcribe = vi.fn(
+      (
+        _stream: MediaStream,
+        onUpdate: (text: string, isFinal: boolean) => void,
+      ) => {
+        emit = onUpdate;
+        return stopTranscribe;
+      },
+    );
     const onTranscriptUpdate = vi.fn();
 
-    const { result } = renderHook(() => useVoiceCapture(onTranscriptUpdate, { getMicStream, transcribe }));
+    const { result } = renderHook(() =>
+      useVoiceCapture(onTranscriptUpdate, { getMicStream, transcribe }),
+    );
     expect(result.current.state).toBe("idle");
 
     act(() => {
@@ -41,7 +48,9 @@ describe("useVoiceCapture", () => {
     expect(onTranscriptUpdate).toHaveBeenCalledWith("2 litres of milk");
     expect(result.current.state).toBe("idle");
     expect(stopTranscribe).toHaveBeenCalledTimes(1);
-    expect((stream.getTracks()[0] as { stop: () => void }).stop).toHaveBeenCalledTimes(1);
+    expect(
+      (stream.getTracks()[0] as { stop: () => void }).stop,
+    ).toHaveBeenCalledTimes(1);
   });
 
   it("stop() before any final update still tears down the stream and transcription", async () => {
@@ -50,7 +59,9 @@ describe("useVoiceCapture", () => {
     const getMicStream = vi.fn().mockResolvedValue(stream);
     const transcribe = vi.fn().mockReturnValue(stopTranscribe);
 
-    const { result } = renderHook(() => useVoiceCapture(vi.fn(), { getMicStream, transcribe }));
+    const { result } = renderHook(() =>
+      useVoiceCapture(vi.fn(), { getMicStream, transcribe }),
+    );
     act(() => {
       result.current.start();
     });
@@ -64,8 +75,12 @@ describe("useVoiceCapture", () => {
   });
 
   it("maps a permission-denied failure to state 'denied', never crashing", async () => {
-    const getMicStream = vi.fn().mockRejectedValue(new DOMException("no", "NotAllowedError"));
-    const { result } = renderHook(() => useVoiceCapture(vi.fn(), { getMicStream }));
+    const getMicStream = vi
+      .fn()
+      .mockRejectedValue(new DOMException("no", "NotAllowedError"));
+    const { result } = renderHook(() =>
+      useVoiceCapture(vi.fn(), { getMicStream }),
+    );
 
     act(() => {
       result.current.start();
@@ -74,8 +89,12 @@ describe("useVoiceCapture", () => {
   });
 
   it("maps a missing-device failure to state 'no-device'", async () => {
-    const getMicStream = vi.fn().mockRejectedValue(new DOMException("no", "NotFoundError"));
-    const { result } = renderHook(() => useVoiceCapture(vi.fn(), { getMicStream }));
+    const getMicStream = vi
+      .fn()
+      .mockRejectedValue(new DOMException("no", "NotFoundError"));
+    const { result } = renderHook(() =>
+      useVoiceCapture(vi.fn(), { getMicStream }),
+    );
 
     act(() => {
       result.current.start();
@@ -85,7 +104,9 @@ describe("useVoiceCapture", () => {
 
   it("maps an unrecognized failure to state 'error'", async () => {
     const getMicStream = vi.fn().mockRejectedValue(new Error("boom"));
-    const { result } = renderHook(() => useVoiceCapture(vi.fn(), { getMicStream }));
+    const { result } = renderHook(() =>
+      useVoiceCapture(vi.fn(), { getMicStream }),
+    );
 
     act(() => {
       result.current.start();

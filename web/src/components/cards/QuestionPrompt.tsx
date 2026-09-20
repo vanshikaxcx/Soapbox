@@ -7,9 +7,17 @@ export interface QuestionPromptProps {
 }
 
 /** The active clarification question - fixed choices, not free text (WP-05). */
-export function QuestionPrompt({ question, onAnswer, disabled = false }: QuestionPromptProps) {
+export function QuestionPrompt({
+  question,
+  onAnswer,
+  disabled = false,
+}: QuestionPromptProps) {
   return (
-    <div className="pp-card pp-question" role="group" aria-label={question.prompt}>
+    <div
+      className="pp-card pp-question"
+      role="group"
+      aria-label={question.prompt}
+    >
       <p className="pp-question__prompt">{question.prompt}</p>
       <div className="pp-question__options">
         {question.options.map((option) => (

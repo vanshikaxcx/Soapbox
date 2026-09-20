@@ -30,13 +30,19 @@ function toBaseUnits(
     case "litres":
     case "liter":
     case "liters":
-      return { value_base: Math.round(quantityValue * 1000), dimension: "volume" };
+      return {
+        value_base: Math.round(quantityValue * 1000),
+        dimension: "volume",
+      };
     case "ml":
       return { value_base: Math.round(quantityValue), dimension: "volume" };
     case "kg":
     case "kilogram":
     case "kilograms":
-      return { value_base: Math.round(quantityValue * 1000), dimension: "mass" };
+      return {
+        value_base: Math.round(quantityValue * 1000),
+        dimension: "mass",
+      };
     case "g":
     case "gram":
     case "grams":
@@ -53,10 +59,23 @@ function toBaseUnits(
 // shape with a trivial checksum instead of a real content hash. An
 // unmatched image (i.e. any real photo) honestly reports
 // extraction_unavailable, never a guess.
-const IMAGE_FIXTURES: Record<number, ReadonlyArray<Omit<ExtractedItem, "item_id">>> = {
+const IMAGE_FIXTURES: Record<
+  number,
+  ReadonlyArray<Omit<ExtractedItem, "item_id">>
+> = {
   42: [
-    { name: "milk", quantity: { value_base: 1000, dimension: "volume" }, hard_attributes: {}, flexibility: "exact_only" },
-    { name: "eggs", quantity: { value_base: 6, dimension: "count" }, hard_attributes: {}, flexibility: "exact_only" },
+    {
+      name: "milk",
+      quantity: { value_base: 1000, dimension: "volume" },
+      hard_attributes: {},
+      flexibility: "exact_only",
+    },
+    {
+      name: "eggs",
+      quantity: { value_base: 6, dimension: "count" },
+      hard_attributes: {},
+      flexibility: "exact_only",
+    },
   ],
 };
 
@@ -77,11 +96,18 @@ export function fakeExtractFromImage(
     return {
       items: [],
       unresolved: [
-        { raw_fragment: "<image>", reason_code: "extraction_unavailable", reason_detail: "no matching fixture for this image" },
+        {
+          raw_fragment: "<image>",
+          reason_code: "extraction_unavailable",
+          reason_detail: "no matching fixture for this image",
+        },
       ],
     };
   }
-  return { items: fixture.map((item) => ({ ...item, item_id: newId() })), unresolved: [] };
+  return {
+    items: fixture.map((item) => ({ ...item, item_id: newId() })),
+    unresolved: [],
+  };
 }
 
 export function fakeExtractFromText(
@@ -96,7 +122,13 @@ export function fakeExtractFromText(
   if (fragments.length === 0) {
     return {
       items: [],
-      unresolved: [{ raw_fragment: transcript, reason_code: "no_items_detected", reason_detail: null }],
+      unresolved: [
+        {
+          raw_fragment: transcript,
+          reason_code: "no_items_detected",
+          reason_detail: null,
+        },
+      ],
     };
   }
 
@@ -113,13 +145,24 @@ export function fakeExtractFromText(
       continue;
     }
     const match = QUANTITY_PATTERN.exec(fragment);
-    const quantity = match !== null ? toBaseUnits(Number(match[1]), match[2]) : null;
+    const quantity =
+      match !== null ? toBaseUnits(Number(match[1]), match[2]) : null;
     const name = match?.[3]?.trim();
     if (quantity === null || name === undefined || name === "") {
-      unresolved.push({ raw_fragment: fragment, reason_code: "no_quantity_detected", reason_detail: null });
+      unresolved.push({
+        raw_fragment: fragment,
+        reason_code: "no_quantity_detected",
+        reason_detail: null,
+      });
       continue;
     }
-    items.push({ item_id: newId(), name, quantity, hard_attributes: {}, flexibility: "exact_only" });
+    items.push({
+      item_id: newId(),
+      name,
+      quantity,
+      hard_attributes: {},
+      flexibility: "exact_only",
+    });
   }
 
   return { items, unresolved };

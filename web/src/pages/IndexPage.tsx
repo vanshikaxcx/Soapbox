@@ -13,7 +13,10 @@ import { UsualBasketCard } from "../components/cards/UsualBasketCard";
 import { useAsyncResource } from "../state/useAsyncResource";
 import { useConversation } from "../state/useConversation";
 import { useVoiceCapture } from "../state/useVoiceCapture";
-import { fixtureConversation, fixtureConversationResponder } from "../fixtures/routeFixtures";
+import {
+  fixtureConversation,
+  fixtureConversationResponder,
+} from "../fixtures/routeFixtures";
 
 /**
  * `/` - entry point. WP-05's text/voice/photo/usual-basket intake slice: one
@@ -25,32 +28,66 @@ export function IndexPage() {
   const { state, retry } = useAsyncResource((signal) =>
     client.health({ signal }),
   );
-  const { turns, activeQuestion, submitting, error, staleNotice, submit, answerQuestion } = useConversation(
-    fixtureConversationResponder,
-    { initialTurns: fixtureConversation },
-  );
+  const {
+    turns,
+    activeQuestion,
+    submitting,
+    error,
+    staleNotice,
+    submit,
+    answerQuestion,
+  } = useConversation(fixtureConversationResponder, {
+    initialTurns: fixtureConversation,
+  });
   const [draft, setDraft] = useState("");
   const voice = useVoiceCapture(setDraft);
 
-  const lastAssistantTurn = turns.filter((turn) => turn.role === "assistant").at(-1) ?? null;
-  const lastShopperTurn = turns.filter((turn) => turn.role === "shopper").at(-1) ?? null;
+  const lastAssistantTurn =
+    turns.filter((turn) => turn.role === "assistant").at(-1) ?? null;
+  const lastShopperTurn =
+    turns.filter((turn) => turn.role === "shopper").at(-1) ?? null;
 
   return (
     <div className="pp-page">
       <h1>ProofPath</h1>
       <ConversationCard turns={turns} />
-      {lastAssistantTurn !== null && <PlaybackCard key={lastAssistantTurn.id} text={lastAssistantTurn.text} />}
-      {activeQuestion !== null && (
-        <QuestionPrompt question={activeQuestion} onAnswer={answerQuestion} disabled={submitting} />
+      {lastAssistantTurn !== null && (
+        <PlaybackCard
+          key={lastAssistantTurn.id}
+          text={lastAssistantTurn.text}
+        />
       )}
-      {staleNotice !== null && <NoticeCard tone="warning" title={staleNotice} />}
+      {activeQuestion !== null && (
+        <QuestionPrompt
+          question={activeQuestion}
+          onAnswer={answerQuestion}
+          disabled={submitting}
+        />
+      )}
+      {staleNotice !== null && (
+        <NoticeCard tone="warning" title={staleNotice} />
+      )}
       {error !== null && <ErrorCard error={error} />}
       <div className="pp-intake">
-        <TranscriptEditor value={draft} onChange={setDraft} onSubmit={submit} disabled={submitting} />
-        <MicButton state={voice.state} onStart={voice.start} onStop={voice.stop} disabled={submitting} />
+        <TranscriptEditor
+          value={draft}
+          onChange={setDraft}
+          onSubmit={submit}
+          disabled={submitting}
+        />
+        <MicButton
+          state={voice.state}
+          onStart={voice.start}
+          onStop={voice.stop}
+          disabled={submitting}
+        />
       </div>
       <PhotoUpload onConfirm={submit} disabled={submitting} />
-      <UsualBasketCard lastShopperText={lastShopperTurn?.text ?? null} onLoad={submit} disabled={submitting} />
+      <UsualBasketCard
+        lastShopperText={lastShopperTurn?.text ?? null}
+        onLoad={submit}
+        disabled={submitting}
+      />
       <section aria-label="API connectivity">
         <h2>Connection status</h2>
         <AsyncStateView state={state} onRetry={retry}>

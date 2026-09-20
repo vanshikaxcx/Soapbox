@@ -1,6 +1,13 @@
 import { useCallback, useRef, useState } from "react";
 
-export type MicState = "idle" | "requesting" | "recording" | "denied" | "no-device" | "unsupported" | "error";
+export type MicState =
+  | "idle"
+  | "requesting"
+  | "recording"
+  | "denied"
+  | "no-device"
+  | "unsupported"
+  | "error";
 
 export interface VoiceCaptureDeps {
   /** Real by default: navigator.mediaDevices.getUserMedia. Injectable so tests never touch a real device. */
@@ -11,7 +18,10 @@ export interface VoiceCaptureDeps {
    * a canned partial sequence then a final transcript via `onUpdate`, and
    * returns a stop function. `isFinal` on the last call ends recording.
    */
-  transcribe?: (stream: MediaStream, onUpdate: (text: string, isFinal: boolean) => void) => () => void;
+  transcribe?: (
+    stream: MediaStream,
+    onUpdate: (text: string, isFinal: boolean) => void,
+  ) => () => void;
 }
 
 export interface UseVoiceCaptureResult {
@@ -24,14 +34,22 @@ const FIXTURE_PARTIALS = ["2", "2 litres", "2 litres of milk"];
 
 function defaultGetMicStream(): Promise<MediaStream> {
   if (navigator.mediaDevices?.getUserMedia === undefined) {
-    return Promise.reject(new DOMException("getUserMedia is not available", "NotSupportedError"));
+    return Promise.reject(
+      new DOMException("getUserMedia is not available", "NotSupportedError"),
+    );
   }
   return navigator.mediaDevices.getUserMedia({ audio: true });
 }
 
-function defaultTranscribe(_stream: MediaStream, onUpdate: (text: string, isFinal: boolean) => void): () => void {
+function defaultTranscribe(
+  _stream: MediaStream,
+  onUpdate: (text: string, isFinal: boolean) => void,
+): () => void {
   const timers = FIXTURE_PARTIALS.map((partial, index) =>
-    setTimeout(() => onUpdate(partial, index === FIXTURE_PARTIALS.length - 1), (index + 1) * 500),
+    setTimeout(
+      () => onUpdate(partial, index === FIXTURE_PARTIALS.length - 1),
+      (index + 1) * 500,
+    ),
   );
   return () => timers.forEach(clearTimeout);
 }
@@ -41,10 +59,17 @@ function stateForError(error: unknown): MicState {
     if (error.name === "NotSupportedError") {
       return "unsupported";
     }
-    if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError" || error.name === "SecurityError") {
+    if (
+      error.name === "NotAllowedError" ||
+      error.name === "PermissionDeniedError" ||
+      error.name === "SecurityError"
+    ) {
       return "denied";
     }
-    if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+    if (
+      error.name === "NotFoundError" ||
+      error.name === "DevicesNotFoundError"
+    ) {
       return "no-device";
     }
   }

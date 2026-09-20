@@ -42,8 +42,11 @@ export function useConversation(
   options: UseConversationOptions = {},
 ): UseConversationResult {
   const newId = options.newId ?? randomId;
-  const [turns, setTurns] = useState<ConversationTurn[]>(options.initialTurns ?? []);
-  const [activeQuestion, setActiveQuestion] = useState<ConversationQuestion | null>(null);
+  const [turns, setTurns] = useState<ConversationTurn[]>(
+    options.initialTurns ?? [],
+  );
+  const [activeQuestion, setActiveQuestion] =
+    useState<ConversationQuestion | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [staleNotice, setStaleNotice] = useState<string | null>(null);
@@ -61,7 +64,11 @@ export function useConversation(
         return;
       }
       submittingRef.current = true;
-      const shopperTurn: ConversationTurn = { id: newId(), role: "shopper", text: trimmed };
+      const shopperTurn: ConversationTurn = {
+        id: newId(),
+        role: "shopper",
+        text: trimmed,
+      };
       setTurns((prev) => [...prev, shopperTurn]);
       setActiveQuestion(null);
       setError(null);
@@ -74,7 +81,15 @@ export function useConversation(
           setActiveQuestion(result.question ?? null);
         })
         .catch((cause: unknown) => {
-          setError(isApiError(cause) ? cause : new ApiError({ kind: "server", message: "Something unexpected happened.", cause }));
+          setError(
+            isApiError(cause)
+              ? cause
+              : new ApiError({
+                  kind: "server",
+                  message: "Something unexpected happened.",
+                  cause,
+                }),
+          );
         })
         .finally(() => {
           submittingRef.current = false;
@@ -86,12 +101,16 @@ export function useConversation(
 
   const answerQuestion = useCallback(
     (optionId: string) => {
-      const option = activeQuestion?.options.find((candidate) => candidate.id === optionId);
+      const option = activeQuestion?.options.find(
+        (candidate) => candidate.id === optionId,
+      );
       // A stale click - the question was already replaced or answered.
       // Nothing to submit, but the shopper should know why their tap did
       // nothing rather than it silently going nowhere.
       if (option === undefined) {
-        setStaleNotice("That question isn't current anymore — go ahead and type your answer instead.");
+        setStaleNotice(
+          "That question isn't current anymore — go ahead and type your answer instead.",
+        );
         return;
       }
       submit(option.label);
@@ -99,5 +118,13 @@ export function useConversation(
     [activeQuestion, submit],
   );
 
-  return { turns, activeQuestion, submitting, error, staleNotice, submit, answerQuestion };
+  return {
+    turns,
+    activeQuestion,
+    submitting,
+    error,
+    staleNotice,
+    submit,
+    answerQuestion,
+  };
 }

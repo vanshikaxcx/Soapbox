@@ -5,7 +5,9 @@ import { fakeStorage } from "../test/fakeStorage";
 
 describe("useUsualBasket", () => {
   it("starts with nothing saved when storage is empty", () => {
-    const { result } = renderHook(() => useUsualBasket({ storage: fakeStorage() }));
+    const { result } = renderHook(() =>
+      useUsualBasket({ storage: fakeStorage() }),
+    );
     expect(result.current.saved).toBeNull();
   });
 
@@ -17,9 +19,14 @@ describe("useUsualBasket", () => {
     act(() => {
       result.current.save("2 litres of milk");
     });
-    expect(result.current.saved).toEqual({ text: "2 litres of milk", savedAt: new Date(1_000_000).toISOString() });
+    expect(result.current.saved).toEqual({
+      text: "2 litres of milk",
+      savedAt: new Date(1_000_000).toISOString(),
+    });
 
-    const { result: reloaded } = renderHook(() => useUsualBasket({ storage, now }));
+    const { result: reloaded } = renderHook(() =>
+      useUsualBasket({ storage, now }),
+    );
     expect(reloaded.current.saved?.text).toBe("2 litres of milk");
   });
 
@@ -35,13 +42,17 @@ describe("useUsualBasket", () => {
     expect(result.current.isStale).toBe(false);
 
     clock += 25 * 60 * 60 * 1000; // 25h later
-    const { result: later } = renderHook(() => useUsualBasket({ storage, now }));
+    const { result: later } = renderHook(() =>
+      useUsualBasket({ storage, now }),
+    );
     expect(later.current.isStale).toBe(true);
   });
 
   it("clear() removes the saved record", () => {
     const storage = fakeStorage();
-    const { result } = renderHook(() => useUsualBasket({ storage, now: () => 1 }));
+    const { result } = renderHook(() =>
+      useUsualBasket({ storage, now: () => 1 }),
+    );
 
     act(() => {
       result.current.save("milk");

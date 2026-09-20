@@ -31,11 +31,17 @@ export function PhotoUpload({ onConfirm, disabled = false }: PhotoUploadProps) {
 
   const handleFile = (file: File): void => {
     if (!ALLOWED_TYPES.has(file.type)) {
-      setStage({ status: "invalid", reason: "Only JPEG or PNG photos are supported." });
+      setStage({
+        status: "invalid",
+        reason: "Only JPEG or PNG photos are supported.",
+      });
       return;
     }
     if (file.size > MAX_BYTES) {
-      setStage({ status: "invalid", reason: "That photo is larger than 5 MB." });
+      setStage({
+        status: "invalid",
+        reason: "That photo is larger than 5 MB.",
+      });
       return;
     }
     setStage({ status: "extracting" });
@@ -49,7 +55,10 @@ export function PhotoUpload({ onConfirm, disabled = false }: PhotoUploadProps) {
         setStage({ status: "error" });
         return;
       }
-      setStage({ status: "ready", outcome: fakeExtractFromImage(new Uint8Array(buffer)) });
+      setStage({
+        status: "ready",
+        outcome: fakeExtractFromImage(new Uint8Array(buffer)),
+      });
     };
     reader.onerror = () => setStage({ status: "error" });
     reader.readAsArrayBuffer(file);
@@ -59,8 +68,12 @@ export function PhotoUpload({ onConfirm, disabled = false }: PhotoUploadProps) {
     if (stage.status !== "ready") {
       return;
     }
-    const summary = stage.outcome.items.map((item) => `${formatQuantity(item.quantity)} ${item.name}`).join(", ");
-    onConfirm(summary === "" ? "Photo: nothing recognised" : `Photo: ${summary}`);
+    const summary = stage.outcome.items
+      .map((item) => `${formatQuantity(item.quantity)} ${item.name}`)
+      .join(", ");
+    onConfirm(
+      summary === "" ? "Photo: nothing recognised" : `Photo: ${summary}`,
+    );
     setStage({ status: "idle" });
   };
 
@@ -87,8 +100,14 @@ export function PhotoUpload({ onConfirm, disabled = false }: PhotoUploadProps) {
           {stage.reason}
         </p>
       )}
-      {stage.status === "extracting" && <p role="status">Reading your photo…</p>}
-      {stage.status === "error" && <p role="alert">Something went wrong reading that photo. Please try again.</p>}
+      {stage.status === "extracting" && (
+        <p role="status">Reading your photo…</p>
+      )}
+      {stage.status === "error" && (
+        <p role="alert">
+          Something went wrong reading that photo. Please try again.
+        </p>
+      )}
       {stage.status === "ready" && (
         <div className="pp-photo-upload__result">
           {stage.outcome.items.length > 0 ? (
@@ -102,8 +121,15 @@ export function PhotoUpload({ onConfirm, disabled = false }: PhotoUploadProps) {
           ) : (
             <p>I couldn't recognise anything in that photo.</p>
           )}
-          {stage.outcome.unresolved.length > 0 && <p>Some parts weren't clear and won't be included.</p>}
-          <button type="button" className="pp-button pp-button--primary" onClick={handleConfirm} disabled={disabled}>
+          {stage.outcome.unresolved.length > 0 && (
+            <p>Some parts weren't clear and won't be included.</p>
+          )}
+          <button
+            type="button"
+            className="pp-button pp-button--primary"
+            onClick={handleConfirm}
+            disabled={disabled}
+          >
             Confirm
           </button>
         </div>

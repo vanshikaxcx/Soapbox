@@ -22,28 +22,47 @@ describe("fakeExtractFromText", () => {
   });
 
   it("splits on 'and'/',' and resolves each fragment independently", () => {
-    const outcome = fakeExtractFromText("2 litres of milk and 500 g cheese", sequentialIds());
+    const outcome = fakeExtractFromText(
+      "2 litres of milk and 500 g cheese",
+      sequentialIds(),
+    );
     expect(outcome.items).toHaveLength(2);
-    expect(outcome.items[1]).toMatchObject({ name: "cheese", quantity: { value_base: 500, dimension: "mass" } });
+    expect(outcome.items[1]).toMatchObject({
+      name: "cheese",
+      quantity: { value_base: 500, dimension: "mass" },
+    });
   });
 
   it("reports a fragment with no detectable quantity as unresolved, never guessed", () => {
     const outcome = fakeExtractFromText("a loaf of bread", sequentialIds());
     expect(outcome.items).toEqual([]);
     expect(outcome.unresolved).toEqual([
-      { raw_fragment: "a loaf of bread", reason_code: "no_quantity_detected", reason_detail: null },
+      {
+        raw_fragment: "a loaf of bread",
+        reason_code: "no_quantity_detected",
+        reason_detail: null,
+      },
     ]);
   });
 
   it("treats a bare number with no unit as a count", () => {
     const outcome = fakeExtractFromText("3 avocados", sequentialIds());
-    expect(outcome.items[0]).toMatchObject({ name: "avocados", quantity: { value_base: 3, dimension: "count" } });
+    expect(outcome.items[0]).toMatchObject({
+      name: "avocados",
+      quantity: { value_base: 3, dimension: "count" },
+    });
   });
 
   it("reports no_items_detected when nothing at all was said", () => {
     const outcome = fakeExtractFromText("   ", sequentialIds());
     expect(outcome.items).toEqual([]);
-    expect(outcome.unresolved).toEqual([{ raw_fragment: "   ", reason_code: "no_items_detected", reason_detail: null }]);
+    expect(outcome.unresolved).toEqual([
+      {
+        raw_fragment: "   ",
+        reason_code: "no_items_detected",
+        reason_detail: null,
+      },
+    ]);
   });
 
   it("caps at 4 items and reports the rest as item_limit_exceeded, never silently dropped", () => {
@@ -53,7 +72,11 @@ describe("fakeExtractFromText", () => {
     );
     expect(outcome.items).toHaveLength(4);
     expect(outcome.unresolved).toEqual([
-      { raw_fragment: "1 kg pepper", reason_code: "item_limit_exceeded", reason_detail: "at most 4 items are supported per request" },
+      {
+        raw_fragment: "1 kg pepper",
+        reason_code: "item_limit_exceeded",
+        reason_detail: "at most 4 items are supported per request",
+      },
     ]);
   });
 });
@@ -63,16 +86,35 @@ describe("fakeExtractFromImage", () => {
     const outcome = fakeExtractFromImage(new Uint8Array([42]), sequentialIds());
     expect(outcome.unresolved).toEqual([]);
     expect(outcome.items).toEqual([
-      { item_id: "id-1", name: "milk", quantity: { value_base: 1000, dimension: "volume" }, hard_attributes: {}, flexibility: "exact_only" },
-      { item_id: "id-2", name: "eggs", quantity: { value_base: 6, dimension: "count" }, hard_attributes: {}, flexibility: "exact_only" },
+      {
+        item_id: "id-1",
+        name: "milk",
+        quantity: { value_base: 1000, dimension: "volume" },
+        hard_attributes: {},
+        flexibility: "exact_only",
+      },
+      {
+        item_id: "id-2",
+        name: "eggs",
+        quantity: { value_base: 6, dimension: "count" },
+        hard_attributes: {},
+        flexibility: "exact_only",
+      },
     ]);
   });
 
   it("reports extraction_unavailable for any image that isn't a known fixture, never a guess", () => {
-    const outcome = fakeExtractFromImage(new Uint8Array([1, 2, 3]), sequentialIds());
+    const outcome = fakeExtractFromImage(
+      new Uint8Array([1, 2, 3]),
+      sequentialIds(),
+    );
     expect(outcome.items).toEqual([]);
     expect(outcome.unresolved).toEqual([
-      { raw_fragment: "<image>", reason_code: "extraction_unavailable", reason_detail: "no matching fixture for this image" },
+      {
+        raw_fragment: "<image>",
+        reason_code: "extraction_unavailable",
+        reason_detail: "no matching fixture for this image",
+      },
     ]);
   });
 });

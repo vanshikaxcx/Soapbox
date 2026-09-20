@@ -24,10 +24,14 @@ export const fixtureConversation: ConversationTurn[] = [
   { id: "t1", role: "assistant", text: "What would you like to buy today?" },
 ];
 
-const UNRESOLVED_COPY: Record<UnresolvedExtraction["reason_code"], (fragment: string) => string> = {
+const UNRESOLVED_COPY: Record<
+  UnresolvedExtraction["reason_code"],
+  (fragment: string) => string
+> = {
   no_quantity_detected: (fragment) => `how much of "${fragment}" you need`,
   ambiguous_item: (fragment) => `which "${fragment}" you mean`,
-  item_limit_exceeded: (fragment) => `"${fragment}" - that's more than I can compare at once (max 4 items)`,
+  item_limit_exceeded: (fragment) =>
+    `"${fragment}" - that's more than I can compare at once (max 4 items)`,
   extraction_unavailable: () => "that - please try again",
   no_items_detected: () => "anything I could shop for in that",
 };
@@ -45,16 +49,26 @@ export const fixtureConversationResponder: ConversationResponder = (text) => {
   const parts: string[] = [];
 
   if (outcome.items.length > 0) {
-    const summary = outcome.items.map((item) => `${formatQuantity(item.quantity)} ${item.name}`).join(", ");
+    const summary = outcome.items
+      .map((item) => `${formatQuantity(item.quantity)} ${item.name}`)
+      .join(", ");
     parts.push(`Got it — comparing ${summary} across two nearby stores now.`);
   }
   if (outcome.unresolved.length > 0) {
-    const asks = outcome.unresolved.map((entry) => UNRESOLVED_COPY[entry.reason_code](entry.raw_fragment));
-    parts.push(`I didn't catch ${asks.join(", or ")} — could you tell me again?`);
+    const asks = outcome.unresolved.map((entry) =>
+      UNRESOLVED_COPY[entry.reason_code](entry.raw_fragment),
+    );
+    parts.push(
+      `I didn't catch ${asks.join(", or ")} — could you tell me again?`,
+    );
   }
 
   return Promise.resolve({
-    turn: { id: `a-${crypto.randomUUID()}`, role: "assistant", text: parts.join(" ") },
+    turn: {
+      id: `a-${crypto.randomUUID()}`,
+      role: "assistant",
+      text: parts.join(" "),
+    },
   });
 };
 

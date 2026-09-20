@@ -47,14 +47,21 @@ function readSaved(storage: Storage): UsualBasketRecord | null {
  * canonical path, so it re-runs extraction/comparison fresh rather than
  * caching anything that could go stale.
  */
-export function useUsualBasket(deps: UseUsualBasketDeps = {}): UseUsualBasketResult {
+export function useUsualBasket(
+  deps: UseUsualBasketDeps = {},
+): UseUsualBasketResult {
   const storage = deps.storage ?? localStorage;
   const now = deps.now ?? Date.now;
-  const [saved, setSaved] = useState<UsualBasketRecord | null>(() => readSaved(storage));
+  const [saved, setSaved] = useState<UsualBasketRecord | null>(() =>
+    readSaved(storage),
+  );
 
   const save = useCallback(
     (text: string) => {
-      const record: UsualBasketRecord = { text, savedAt: new Date(now()).toISOString() };
+      const record: UsualBasketRecord = {
+        text,
+        savedAt: new Date(now()).toISOString(),
+      };
       storage.setItem(STORAGE_KEY, JSON.stringify(record));
       setSaved(record);
     },
@@ -66,8 +73,11 @@ export function useUsualBasket(deps: UseUsualBasketDeps = {}): UseUsualBasketRes
     setSaved(null);
   }, [storage]);
 
-  const isStale = saved !== null && now() - new Date(saved.savedAt).getTime() > FRESHNESS_WINDOW_MS;
-  const savedRelativeTime = saved !== null ? formatRelativeTime(saved.savedAt, now()) : null;
+  const isStale =
+    saved !== null &&
+    now() - new Date(saved.savedAt).getTime() > FRESHNESS_WINDOW_MS;
+  const savedRelativeTime =
+    saved !== null ? formatRelativeTime(saved.savedAt, now()) : null;
 
   return { saved, savedRelativeTime, isStale, save, clear };
 }

@@ -14,7 +14,12 @@ export interface TranscriptEditorProps {
  * sources share one reviewable, editable draft before the shopper submits
  * through the one canonical `onSubmit` path.
  */
-export function TranscriptEditor({ value, onChange, onSubmit, disabled = false }: TranscriptEditorProps) {
+export function TranscriptEditor({
+  value,
+  onChange,
+  onSubmit,
+  disabled = false,
+}: TranscriptEditorProps) {
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     if (disabled) {
@@ -39,7 +44,11 @@ export function TranscriptEditor({ value, onChange, onSubmit, disabled = false }
         placeholder="Speak or type your list…"
         autoComplete="off"
       />
-      <button type="submit" className="pp-button pp-button--primary" disabled={disabled || value.trim() === ""}>
+      <button
+        type="submit"
+        className="pp-button pp-button--primary"
+        disabled={disabled || value.trim() === ""}
+      >
         Send
       </button>
     </form>

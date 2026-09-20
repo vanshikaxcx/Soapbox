@@ -17,9 +17,12 @@ export interface UsePollyPlaybackResult {
 }
 
 // A minimal, valid, silent WAV - real audio a browser can actually load and play, not a placeholder path.
-const FIXTURE_AUDIO_DATA_URI = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+const FIXTURE_AUDIO_DATA_URI =
+  "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
 
-function defaultSynthesize(text: string): Promise<{ audioUrl: string; caption: string }> {
+function defaultSynthesize(
+  text: string,
+): Promise<{ audioUrl: string; caption: string }> {
   return Promise.resolve({ audioUrl: FIXTURE_AUDIO_DATA_URI, caption: text });
 }
 
