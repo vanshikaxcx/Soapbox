@@ -21,6 +21,188 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/purchases": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create a purchase from a chosen basket and start the re-check. */
+    post: operations["createPurchase"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/purchases/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read a purchase, its current quote, and whether approval is permitted. */
+    get: operations["getPurchase"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/purchases/{id}/preparations/{version}/accept": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Accept an exact change list and receive the quote it yields. */
+    post: operations["acceptPreparation"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/purchases/{id}/approve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Approve the exact simulated quote.
+     * @description The only endpoint that creates a payment attempt. It requires the quote hash and two version numbers together, which only the card that displayed them possesses — a model, a spoken "yes" or a replayed transcript does not.
+     */
+    post: operations["approvePurchase"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/purchases/{id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Cancel before anything is sent. */
+    post: operations["cancelPurchase"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/purchases/{id}/reconcile": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Ask the provider what actually happened.
+     * @description Reads the references we already hold. Creates no payment, no order, no refund and no attempt — the handler is wired to a read-only provider port that has no write verb on it.
+     */
+    post: operations["reconcilePurchase"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/purchases/{id}/case": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** What is known, and what is still missing. */
+    get: operations["getPurchaseCase"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/demo/scenarios": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Set the simulated provider's next behaviour (operator only).
+     * @description A shopper receives 404, not 403.
+     */
+    post: operations["setDemoScenario"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/demo/effects": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Effect counts straight off the provider's ledger (operator only). */
+    get: operations["getDemoEffects"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/callbacks/simulator": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Provider callback ingestion (contract by WP-09, endpoint by P4 in WP-10).
+     * @description The signature covers delivery_timestamp, a newline, event_id, a newline, then the raw body exactly as received — never a re-serialised object, because a JSON round-trip reorders keys and would break an honest delivery. The immutable inbox row is written before any 2xx.
+     */
+    post: operations["ingestSimulatorCallback"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -67,11 +249,164 @@ export interface components {
       error: components["schemas"]["ErrorBody"];
       request_id: components["schemas"]["OpaqueId"];
     };
+    /**
+     * @description How well an amount is known. `verified` is exact. `estimated` is an upper bound — the amount carried is the most it should be. `unknown` means no bound exists at all, and is never rendered as zero.
+     * @enum {string}
+     */
+    Confidence: "verified" | "estimated" | "unknown";
+    /** @description `amount` is absent exactly when confidence is `unknown`. Absent means "we could not confirm this fee". It is never zero, and a quote is never built while such a charge exists. */
+    Charge: {
+      /** @enum {string} */
+      kind:
+        | "delivery"
+        | "handling"
+        | "packaging"
+        | "small_order"
+        | "surge"
+        | "tax"
+        | "other";
+      confidence: components["schemas"]["Confidence"];
+      amount?: components["schemas"]["MoneyINR"];
+    };
+    QuoteLine: {
+      sku: string;
+      name: string;
+      quantity_base: number;
+      /** @enum {string} */
+      dimension: "mass" | "volume" | "count";
+      unit_price: components["schemas"]["MoneyINR"];
+      line_total: components["schemas"]["MoneyINR"];
+      /** @default false */
+      substituted: boolean;
+    };
+    Quote: {
+      quote_id: components["schemas"]["OpaqueId"];
+      quote_version: components["schemas"]["Version"];
+      /** @description Binds every term shown, including live-or-fixture mode and each charge's confidence. Send it back unchanged on approve; a mismatch is a 409. */
+      quote_hash: string;
+      seller: string;
+      source_merchant?: string;
+      /** @enum {string} */
+      mode: "live" | "fixture";
+      lines: components["schemas"]["QuoteLine"][];
+      charges: components["schemas"]["Charge"][];
+      total: components["schemas"]["MoneyINR"];
+      /**
+       * @description True when total_paise is a maximum rather than an exact price, which is the case whenever any charge is estimated. The live merchants can never report a complete fee — a real one exists only inside a cart that is deliberately never touched — so live quotes always set this. Render the amount as a ceiling everywhere it appears, not only on the approve control. See WP-02-A1.
+       * @default false
+       */
+      amount_is_ceiling: boolean;
+      delivery: string;
+      /** Format: date-time */
+      expires_at: string;
+      /** @description The exact label for the approval control — "Approve simulated Rs 590.00" when the total is exact, "Approve simulated up to Rs 590.00" when amount_is_ceiling is true. Render it; do not compose it. The words "up to" are the difference between stating a bound and making a claim. */
+      approve_label: string;
+      /** @description Must be visible on every quote and approval surface. */
+      disclaimer: string;
+      /** @description Present exactly when `amount_is_ceiling` is true, so its presence is itself the signal. Says the fees were estimated from each store's published charges rather than read from a cart, and that the total should not exceed the amount shown. Neither the mode nor the fixture label covers this: a live quote is live data and can still carry an estimated fee. Render it alongside the amount, not behind a disclosure toggle. */
+      estimated_fees_note?: string;
+    };
+    Purchase: {
+      purchase_id: components["schemas"]["OpaqueId"];
+      version: components["schemas"]["Version"];
+      /** @enum {string} */
+      mode: "live" | "fixture";
+      /**
+       * @description `unknown` is its own state. It is not failure and not success, and must never be rendered as either.
+       * @enum {string}
+       */
+      payment:
+        | "not_started"
+        | "claimed"
+        | "pending"
+        | "unknown"
+        | "succeeded"
+        | "failed";
+      /** @enum {string} */
+      order: "not_created" | "pending" | "unknown" | "confirmed" | "failed";
+      /** @enum {string} */
+      refund: "none" | "pending" | "unknown" | "completed" | "failed";
+      active_attempt_id?: components["schemas"]["OpaqueId"];
+      quote?: components["schemas"]["Quote"];
+      /** @description Server-computed. Bind the approve control to this field alone, never to a client-side countdown — otherwise the button can re-enable in the gap between "looks expired" and the expiry actually committing. */
+      approve_enabled: boolean;
+      disclaimer?: string;
+      fixture_label?: string;
+    };
+    Case: {
+      case_id: components["schemas"]["OpaqueId"];
+      purchase_id: components["schemas"]["OpaqueId"];
+      /** @enum {string} */
+      status: "open" | "awaiting_user" | "resolved" | "closed";
+      known_facts: ("payment" | "order" | "refund")[];
+      /** @description Named gaps, not an absence. "We cannot tell whether an order exists" is the sentence a shopper most needs said out loud. */
+      missing_facts: (
+        | "payment_outcome"
+        | "order_existence"
+        | "order_reference"
+        | "refund_outcome"
+        | "merchant_confirmation"
+      )[];
+    };
+    /** @description Operator only. Read from the provider's ledger, not from our state. */
+    EffectCounts: {
+      payment_effects?: number;
+      order_effects?: number;
+      submissions_received?: number;
+      duplicate_submissions_suppressed?: number;
+      rejections?: number;
+      /** @description Must equal payment_effects. Any other relationship is a bug. */
+      attempts_dispatched?: number;
+    };
+    /**
+     * @description The domain outcomes WP-02/08/09 return, carried in the shared envelope's `error.code`. Documented here rather than by widening the baseline's ErrorBody pattern, so the shared envelope stays open to every work package while clients of these endpoints still get an exhaustive list to branch on. A 409 means four genuinely different things across the purchase endpoints and each needs its own wording -- collapsing them into one "conflict" screen is the mistake this list exists to prevent.
+     * @enum {string}
+     */
+    PurchaseErrorCode:
+      | "version_conflict"
+      | "idempotency_payload_mismatch"
+      | "diff_hash_mismatch"
+      | "diff_not_accepted"
+      | "quote_hash_mismatch"
+      | "quote_not_constructible"
+      | "quote_expired"
+      | "preparation_expired"
+      | "approval_expired"
+      | "approval_already_consumed"
+      | "purchase_already_claimed"
+      | "attempt_blocked_by_exposure"
+      | "payment_key_conflict"
+      | "illegal_transition"
+      | "contradictory_provider_fact"
+      | "condition_failed"
+      | "invalid_record"
+      | "unpriced_line"
+      | "unknown_charge"
+      | "estimated_total"
+      | "incompatible_units"
+      | "budget_exceeded"
+      | "overbuy_limit_exceeded"
+      | "hard_attribute_unsatisfied"
+      | "not_found"
+      | "validation_error";
+    PurchaseErrorBody: {
+      code: components["schemas"]["PurchaseErrorCode"];
+      message: string;
+      details: {
+        [key: string]: unknown;
+      };
+    };
+    PurchaseErrorResponse: {
+      error: components["schemas"]["PurchaseErrorBody"];
+      request_id: components["schemas"]["OpaqueId"];
+    };
   };
   responses: never;
   parameters: {
     /** @description Reusable non-empty idempotency key for future mutations. */
     "Idempotency-Key": string;
+    PurchaseId: components["schemas"]["OpaqueId"];
+    PreparationVersion: components["schemas"]["Version"];
   };
   requestBodies: never;
   headers: never;
@@ -109,6 +444,329 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  createPurchase: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Reusable non-empty idempotency key for future mutations. */
+        "Idempotency-Key": components["parameters"]["Idempotency-Key"];
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Committed; the re-check is queued. */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AsyncAccepted"];
+        };
+      };
+      /** @description Stale revision, or the key was reused with a different payload. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getPurchase: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["PurchaseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The purchase. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Purchase"];
+        };
+      };
+      /** @description Absent, or not yours — deliberately indistinguishable. Telling someone a purchase exists but is not theirs still tells them it exists. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  acceptPreparation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["PurchaseId"];
+        version: components["parameters"]["PreparationVersion"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Accepted; quote built. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Quote"];
+        };
+      };
+      /** @description The change list moved, or the version is stale. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The re-check is older than 120s; re-check again. */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No quote is possible because a charge is unknown. An unknown charge has no ceiling, so no amount on the approval control would be true. */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  approvePurchase: {
+    parameters: {
+      query?: never;
+      header: {
+        /** @description Reusable non-empty idempotency key for future mutations. */
+        "Idempotency-Key": components["parameters"]["Idempotency-Key"];
+      };
+      path: {
+        id: components["parameters"]["PurchaseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The attempt already existed — a replay, or a lost race. Not an error: the payment may be in flight, and calling it a failure would be a lie. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description One attempt created; checkout queued. */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AsyncAccepted"];
+        };
+      };
+      /** @description Stale version, tampered hash, reused key, or a prior payment still unresolved. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The quote expired; re-check and approve again. */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  cancelPurchase: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["PurchaseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Cancelled. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description An attempt already exists, or approve won the race. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  reconcilePurchase: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["PurchaseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description What the provider says now, and whether it changed anything. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Absent, or not yours. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getPurchaseCase: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: components["parameters"]["PurchaseId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The case. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Case"];
+        };
+      };
+      /** @description No case, or not yours. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  setDemoScenario: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Scenario set. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not an operator. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  getDemoEffects: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Counts. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EffectCounts"];
+        };
+      };
+      /** @description Not an operator. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  ingestSimulatorCallback: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Applied, or a duplicate redelivery. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Recorded but not applied — conflicted or quarantined. */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Unknown provider, or timestamp skew over five minutes. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Signature invalid. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
