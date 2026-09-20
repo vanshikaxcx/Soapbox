@@ -386,7 +386,7 @@ def test_a_payment_is_never_submitted_without_a_lookup_row() -> None:
 
     checkout = Checkout()
     attempt = checkout.attempt()
-    checkout.world.store._items.pop(provider_lookup_key(attempt.payment_key))
+    checkout.world.memory._items.pop(provider_lookup_key(attempt.payment_key))
 
     calls: list[object] = []
 

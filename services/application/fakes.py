@@ -18,15 +18,24 @@ sleep-based and flaky, or they only ever test the sequential case.
 from __future__ import annotations
 
 import copy
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 
 from services.application.ports import (
     Action,
     Condition,
     ConditionFailed,
+    ExecutionState,
+    ExecutionStatus,
+    IndexedDocument,
+    IndexName,
+    IndexUnavailable,
     Key,
+    PublishRejected,
+    StartedExecution,
+    StateStore,
     Write,
+    reject_duplicate_keys,
 )
 from services.application.ports.speech import (
     SpeechSynthesisError,
@@ -35,6 +44,7 @@ from services.application.ports.speech import (
 )
 from services.domain.catalog import Observation
 from services.domain.errors import DomainError
+from services.domain.jobs import OutboxEvent
 from services.domain.money import Charge
 
 
@@ -96,6 +106,7 @@ class MemoryStore:
             hook(writes)
 
         self.transactions.append(writes)
+        reject_duplicate_keys(writes)
 
         for write in writes:
             existing = self._items.get(write.key)
@@ -124,8 +135,226 @@ class MemoryStore:
     def seed(self, key: Key, item: object) -> None:
         self._items[key] = item
 
+    def reset_bookkeeping(self) -> None:
+        """Forget the transactions counted so far, keeping the items.
+
+        Setting a situation up is not behaviour under test. A fixture that
+        seeds through ``transact`` -- which it must, if it is to work on any
+        store and not just this one -- would otherwise be counted alongside the
+        use case's own writes, and every "committed exactly once" assertion
+        would be off by one.
+        """
+        self.transactions.clear()
+        self.commits = 0
+        self.rejections = 0
+
     def snapshot(self) -> dict[Key, object]:
         return copy.copy(self._items)
+
+
+class RecordingEventBus:
+    """An event bus that keeps what it was given and refuses what it is told to.
+
+    ``refuse`` is the important half. EventBridge reports a rejected entry
+    inside a successful response, so the failure a publisher most needs to
+    survive is one that never raises -- and a fake that only ever accepted
+    could not express it at all.
+    """
+
+    def __init__(self, *, refuse: dict[str, str] | None = None) -> None:
+        self.published: list[OutboxEvent] = []
+        self.batches: list[list[OutboxEvent]] = []
+        #: event id -> the error code the bus should report for it.
+        self.refuse = dict(refuse or {})
+
+    def publish(self, events: Sequence[OutboxEvent]) -> list[PublishRejected]:
+        self.batches.append(list(events))
+        rejected: list[PublishRejected] = []
+        for event in events:
+            error_code = self.refuse.get(event.event_id)
+            if error_code is None:
+                self.published.append(event)
+            else:
+                rejected.append(PublishRejected(event_id=event.event_id, error_code=error_code))
+        return rejected
+
+
+class RecordingWorkflowEngine:
+    """A workflow engine that enforces the one rule the real one enforces.
+
+    Names are unique, and starting a name it already has resolves to that run
+    rather than creating a second. A fake that started whatever it was asked to
+    would make every duplicate-delivery test pass for the wrong reason -- the
+    suppression is the name, so the fake has to keep names.
+    """
+
+    def __init__(self, *, clock: FixedClock | None = None) -> None:
+        self.started: list[str] = []
+        self._executions: dict[str, ExecutionStatus] = {}
+        self._payloads: dict[str, str] = {}
+        #: Optional, because most tests do not care when a run began. Supplied,
+        #: the fake records a start time the way the real engine does -- which is
+        #: what lets a test about staleness be about the run rather than the job.
+        self._clock = clock
+
+    def start(self, *, run_id: str, payload: str) -> StartedExecution:
+        self.started.append(run_id)
+        existing = self._executions.get(run_id)
+        if existing is not None:
+            return StartedExecution(
+                run_id=run_id, execution_ref=self.execution_ref(run_id), started_new_run=False
+            )
+        self._executions[run_id] = ExecutionStatus(
+            run_id=run_id,
+            state=ExecutionState.RUNNING,
+            started_at=self._clock.now() if self._clock is not None else None,
+        )
+        self._payloads[run_id] = payload
+        return StartedExecution(
+            run_id=run_id, execution_ref=self.execution_ref(run_id), started_new_run=True
+        )
+
+    def status(self, *, execution_ref: str) -> ExecutionStatus | None:
+        return self._executions.get(self.run_id_of(execution_ref))
+
+    # -- test helpers ------------------------------------------------------
+
+    def execution_ref(self, run_id: str) -> str:
+        return f"arn:fake:execution:{run_id}"
+
+    def run_id_of(self, execution_ref: str) -> str:
+        return execution_ref.rsplit(":", 1)[-1]
+
+    def payload_of(self, run_id: str) -> str:
+        return self._payloads[run_id]
+
+    def finish(
+        self,
+        run_id: str,
+        state: ExecutionState,
+        *,
+        result_ref: str | None = None,
+        error_code: str | None = None,
+    ) -> None:
+        """Move a run to a terminal state, the way the engine eventually would."""
+        existing = self._executions.get(run_id)
+        self._executions[run_id] = ExecutionStatus(
+            run_id=run_id,
+            state=state,
+            result_ref=result_ref,
+            error_code=error_code,
+            started_at=existing.started_at if existing is not None else None,
+        )
+
+    def forget(self, run_id: str) -> None:
+        """Make the engine deny all knowledge, which is not the same as failing."""
+        self._executions.pop(run_id, None)
+
+    def runs(self) -> int:
+        return len(self._executions)
+
+
+class MemorySearchIndex:
+    """An index that answers from a dict, and can be told to go dark.
+
+    The outage is the half that matters. An index that only ever answered could
+    not express the one failure WP-07 names for it -- ``index outage | canonical
+    fallback serves the read`` -- so every fallback test would be unreachable
+    and the fallback branch would be defended by nothing.
+
+    ``put`` is deliberately last-write-wins. Version ordering belongs to
+    ``ProjectionIndexer``; a fake that enforced it here would make the indexer's
+    own check untestable, because the rule would pass whether or not the code
+    under test still contained it.
+
+    Two faults rather than one, and the second is not tidiness. A cluster that
+    has stopped answering reads while still accepting writes is the one shape in
+    which "an outage means nothing is indexed" would silently let an older
+    document overwrite a newer one. A fake that could only be wholly dark would
+    make that mutation survive, because the write would fail for its own reasons
+    and the test could not tell which of the two had saved it.
+    """
+
+    def __init__(self) -> None:
+        self._documents: dict[tuple[IndexName, str], IndexedDocument] = {}
+        #: The cluster error code to report while wholly dark, or ``None``.
+        self.outage: str | None = None
+        #: Reads failing while writes still land. ``None`` when reads are fine.
+        self.read_outage: str | None = None
+        self.puts = 0
+        self.searches = 0
+
+    def _read_fault(self, index: IndexName) -> IndexUnavailable | None:
+        code = self.read_outage or self.outage
+        return None if code is None else IndexUnavailable(index=index, error_code=code)
+
+    # -- the port ----------------------------------------------------------
+
+    def current(
+        self, index: IndexName, document_id: str
+    ) -> IndexedDocument | None | IndexUnavailable:
+        fault = self._read_fault(index)
+        if fault is not None:
+            return fault
+        return self._documents.get((index, document_id))
+
+    def put(self, document: IndexedDocument) -> None | IndexUnavailable:
+        if self.outage is not None:
+            return IndexUnavailable(index=document.index, error_code=self.outage)
+        self._documents[(document.index, document.document_id)] = document
+        self.puts += 1
+        return None
+
+    def search(
+        self, index: IndexName, *, owner_id: str, terms: Sequence[str], limit: int
+    ) -> list[IndexedDocument] | IndexUnavailable:
+        fault = self._read_fault(index)
+        if fault is not None:
+            return fault
+        self.searches += 1
+        matched = [
+            document
+            for document in self._documents.values()
+            if document.index is index
+            and document.owner_id == owner_id
+            and all(term in document.terms for term in terms)
+        ]
+        # Sorted so two runs with the same contents answer identically; an order
+        # that depends on insertion is not something a test may rely on.
+        return sorted(matched, key=lambda d: d.document_id)[:limit]
+
+    # -- test helpers ------------------------------------------------------
+
+    def go_dark(self, error_code: str = "cluster_unreachable") -> None:
+        """Neither reads nor writes are answered."""
+        self.outage = error_code
+
+    def stop_answering_reads(self, error_code: str = "read_timeout") -> None:
+        """Reads fail; writes would still land if anything asked for one."""
+        self.read_outage = error_code
+
+    def recover(self) -> None:
+        self.outage = None
+        self.read_outage = None
+
+    def version_of(self, index: IndexName, document_id: str) -> int | None:
+        """What the index holds now, so a test can assert on it without a search."""
+        document = self._documents.get((index, document_id))
+        return None if document is None else document.version
+
+
+def seed_into(store: StateStore, writes: list[Write]) -> None:
+    """Put a situation into any store, then make the seeding invisible.
+
+    Written against the port so a fixture seeds the same way whichever store it
+    was handed; the bookkeeping reset is best-effort, because only the fake has
+    any. Nothing here goes through ``MemoryStore.seed``, which would work on one
+    store and silently do nothing on the other.
+    """
+    store.transact(writes)
+    reset = getattr(store, "reset_bookkeeping", None)
+    if reset is not None:
+        reset()
 
 
 class AllowAllPolicy:
@@ -225,8 +454,12 @@ __all__ = [
     "FixedClock",
     "FixedTranscribeUrlSigner",
     "MemoryAudioSink",
+    "MemorySearchIndex",
     "MemoryStore",
+    "RecordingEventBus",
+    "RecordingWorkflowEngine",
     "ScriptedMerchant",
     "ScriptedSpeechSynthesizer",
     "SequentialIds",
+    "seed_into",
 ]

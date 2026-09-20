@@ -79,7 +79,7 @@ def test_two_concurrent_recheckings_cannot_land_on_one_version() -> None:
     def racer(_writes: object) -> None:
         others.append(world.prepare(merchant_selling(60_000)))
 
-    world.store.before_transact = racer
+    world.memory.before_transact = racer
     world.prepare(merchant_selling(59_500))
 
     versions = [read(world.store, preparation_key(PURCHASE_ID, v), Preparation) for v in (1, 2, 3)]

@@ -23,8 +23,16 @@ from services.application.ports.core import (
     StateStore,
     Write,
     read,
+    reject_duplicate_keys,
 )
+from services.application.ports.events import EventBus, PublishRejected
 from services.application.ports.id_generator import IdGenerator
+from services.application.ports.index import (
+    IndexedDocument,
+    IndexName,
+    IndexUnavailable,
+    SearchIndex,
+)
 from services.application.ports.speech import (
     SpeechSynthesisError,
     SpeechSynthesisResult,
@@ -32,23 +40,42 @@ from services.application.ports.speech import (
     TranscribeSessionUrl,
     TranscribeUrlSigner,
 )
+from services.application.ports.workflows import (
+    TERMINAL_STATES,
+    ExecutionState,
+    ExecutionStatus,
+    StartedExecution,
+    WorkflowEngine,
+)
 
 __all__ = [
     "Action",
     "Clock",
     "Condition",
     "ConditionFailed",
+    "EventBus",
+    "ExecutionState",
+    "ExecutionStatus",
     "IdFactory",
     "IdGenerator",
+    "IndexName",
+    "IndexUnavailable",
+    "IndexedDocument",
     "Key",
     "MerchantPort",
     "PolicyPort",
     "SpeechSynthesisError",
     "SpeechSynthesisResult",
     "SpeechSynthesizer",
+    "PublishRejected",
+    "SearchIndex",
+    "StartedExecution",
     "StateStore",
     "TranscribeSessionUrl",
     "TranscribeUrlSigner",
+    "TERMINAL_STATES",
+    "WorkflowEngine",
     "Write",
     "read",
+    "reject_duplicate_keys",
 ]

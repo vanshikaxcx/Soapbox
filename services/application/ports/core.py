@@ -72,6 +72,27 @@ class ConditionFailed(DomainError):
     reason: str
 
 
+def reject_duplicate_keys(writes: list[Write]) -> None:
+    """Refuse a transaction that names the same key twice.
+
+    DynamoDB refuses one outright, so a store that quietly accepted it would
+    let a transaction pass in tests and fail in production -- the exact class of
+    difference the conformance suite exists to eliminate. It raises rather than
+    returning ``ConditionFailed`` because a malformed transaction is a bug in
+    the caller, not a lost race: there is no 409 to render and nothing to retry.
+
+    Lives on the port because it is a property of a list of ``Write``, not of
+    any one store, and both implementations must apply it identically.
+    """
+    seen: set[Key] = set()
+    for write in writes:
+        if write.key in seen:
+            raise ValueError(
+                f"transaction writes {write.key} twice; a transaction must name each key once"
+            )
+        seen.add(write.key)
+
+
 @runtime_checkable
 class Clock(Protocol):
     """Time enters the application layer here and nowhere else.
@@ -102,6 +123,30 @@ class StateStore(Protocol):
         Returning ``ConditionFailed`` is a normal outcome, not an exception: a
         lost approve/cancel race is an expected event that the caller turns into
         a 409, so it is a value like any other domain error.
+        """
+        ...
+
+    def keys_matching(self, prefix: str) -> list[Key]:
+        """Every key whose *partition* begins with ``prefix``, in sorted order.
+
+        Stated on the port because production already depends on it: the
+        operator's effect counts are read back out of committed state rather
+        than kept as a running total, so a restart cannot lose a count and a
+        retry cannot inflate one. An adapter written against a port that
+        omitted this would type-check and then fail the first time an operator
+        asked -- which is the failure this line exists to make impossible.
+
+        Sorted so that two stores with the same contents answer identically;
+        an order that depends on the storage engine is not a contract.
+        """
+        ...
+
+    def count_matching(self, prefix: str) -> int:
+        """How many keys match, without the caller holding any of them.
+
+        Separate from ``keys_matching`` so a store that can count more cheaply
+        than it can list is free to, and so a caller that wants only the number
+        cannot accidentally pull an unbounded result set into memory to get it.
         """
         ...
 

@@ -8,7 +8,9 @@ verified.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import ClassVar
 
 import pytest
 
@@ -18,8 +20,9 @@ from services.application.fakes import (
     MemoryStore,
     ScriptedMerchant,
     SequentialIds,
+    seed_into,
 )
-from services.application.ports import MerchantPort, read
+from services.application.ports import MerchantPort, StateStore, Write, read
 from services.application.prepare import RefreshedFacts, build_quote, diff_between
 from services.application.purchase import (
     AttemptCreated,
@@ -103,8 +106,15 @@ def an_observation(sku: str, paise: int, *, in_stock: bool = True) -> Observatio
 
 
 class World:
-    def __init__(self) -> None:
-        self.store = MemoryStore()
+    #: How a ``World`` gets its store when a caller does not supply one.
+    #: Defaults to the fake, so every existing call site is unchanged. The
+    #: adapter conformance run swaps it, which is what lets these tests --
+    #: written with no adapter in mind, and therefore not shaped to flatter one
+    #: -- run unaltered against DynamoDB.
+    store_factory: ClassVar[Callable[[], StateStore]] = MemoryStore
+
+    def __init__(self, *, store: StateStore | None = None) -> None:
+        self.store = World.store_factory() if store is None else store
         self.clock = FixedClock(NOW)
         self.uc = PurchaseUseCases(
             store=self.store,
@@ -119,7 +129,34 @@ class World:
             intent_revision=1,
             mode=Mode.LIVE,
         )
-        self.store.seed(purchase_key(PURCHASE_ID), self.purchase)
+        # ``transact`` rather than ``MemoryStore.seed``: seeding has to work
+        # on whichever store this World was given, and an unconditional
+        # write is exactly what ``seed`` was.
+        seed_into(
+            self.store,
+            [Write(key=purchase_key(PURCHASE_ID), item=self.purchase, reason="seeded")],
+        )
+
+    @property
+    def memory(self) -> MemoryStore:
+        """The store as the fake, for the tests that are *about* the fake.
+
+        Reaching for ``before_transact`` or ``commits`` is not a wart. Those
+        tests are about interleaving and about how many transactions a use case
+        committed, and the fake exists precisely to make those observable --
+        there is no way to ask a real DynamoDB "did you commit exactly once".
+
+        Naming it here rather than typing ``store`` as the fake keeps two things
+        true at once: ``store`` is the port, which is what the use cases take,
+        and a test that needs the fake says so. It also means such a test fails
+        with a sentence rather than an ``AttributeError`` if it is ever pointed
+        at a real store -- which is how the adapter conformance run knows, by
+        construction, which tests it must not include.
+        """
+        assert isinstance(self.store, MemoryStore), (
+            "this test reads the fake's own bookkeeping, so it cannot run against a real store"
+        )
+        return self.store
 
     def prepare(
         self, merchant: MerchantPort, basket: Basket | None = None
