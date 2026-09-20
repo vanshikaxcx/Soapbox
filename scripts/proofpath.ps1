@@ -306,7 +306,13 @@ function Invoke-Stage4Typecheck {
 }
 
 function Invoke-Stage4TestUnit {
-    & uv run --frozen python -m pytest tests/unit
+    # `services` carries every domain/application/merchant *_test.py file
+    # (pure unit tests against fakes, not tests/contracts' adapter-contract
+    # suites or tests/integration's component-boundary suites) -- discovered
+    # 2026-09-20 that this had never been wired in here, so ~700+ tests
+    # across WP-02/WP-08/etc. were never actually part of this gate despite
+    # PRs reporting green.
+    & uv run --frozen python -m pytest tests/unit services
     if ($LASTEXITCODE -ne 0) { throw "Python unit tests failed." }
     & npm --prefix web run test
     if ($LASTEXITCODE -ne 0) { throw "Web unit tests failed." }
