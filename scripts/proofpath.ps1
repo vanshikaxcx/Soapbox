@@ -396,6 +396,16 @@ function Invoke-Stage5Dev {
 function Invoke-Stage5WebSmoke {
     $previousNodePath = $env:NODE_PATH
     try {
+        # web/.env is gitignored (real deploys get real Cognito config from
+        # WP-01); without it, loadCognitoConfig() throws and the dev server
+        # playwright drives never renders anything to smoke-test. Fall back
+        # to the placeholder values in .env.example so this stage - like any
+        # environment without real Cognito config yet - can still prove the
+        # app builds and boots.
+        $webEnvFile = Join-Path $script:RepositoryRoot "web/.env"
+        if (-not (Test-Path $webEnvFile)) {
+            Copy-Item (Join-Path $script:RepositoryRoot "web/.env.example") $webEnvFile
+        }
         Invoke-Stage5SamBuild
         $env:NODE_PATH = Join-Path $script:RepositoryRoot "web/node_modules"
         Invoke-WithScopedAwsRegion {
@@ -544,7 +554,17 @@ function Invoke-Stage6Security {
     }
     Push-Location -LiteralPath $script:RepositoryRoot
     try {
-        & $gitleaksBinary detect --source . --redact --exit-code 1
+        # --log-opts="HEAD" scopes the git-history walk to HEAD's own
+        # ancestry. Without it, gitleaks' default git-log behavior walks
+        # every locally-fetched branch ref (confirmed live 2026-09-20: 20
+        # commits scanned with this flag on a clean main checkout vs. ~101
+        # without it) -- in CI, a full-history checkout leaves every other
+        # contributor's in-progress branches as local refs too, so any
+        # secret leaked on someone else's unrelated, unmerged branch fails
+        # every PR's security check regardless of what that PR touches.
+        # This scopes the check back to what it's actually meant to prove:
+        # this branch's own history is clean, not the whole repository's.
+        & $gitleaksBinary detect --source . --redact --log-opts="HEAD" --exit-code 1
         if ($LASTEXITCODE -ne 0) { throw "Gitleaks detected a potential secret in repository history." }
 
         & uv run --frozen pip-audit --requirement services/api/requirements.txt @pipAuditIgnoreArgs

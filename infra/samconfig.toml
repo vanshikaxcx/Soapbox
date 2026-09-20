@@ -1,0 +1,29 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "proofpath-checkpoint"
+resolve_s3 = true
+s3_prefix = "proofpath-checkpoint"
+region = "ap-south-1"
+capabilities = "CAPABILITY_NAMED_IAM"
+image_repositories = []
+# amazon.nova-pro-v1:0 (the template's original default) only supports
+# INFERENCE_PROFILE invocation in ap-south-1, not the bare model ID
+# AC-01-02 requires -- see infra/template.yaml's BedrockModelId comment.
+# CloudFormation does not re-apply a template's Default on stack update for
+# a parameter that already has a stack value, so this override must stay
+# explicit here, not rely on the template Default alone.
+#
+# CheckpointVpcId/CheckpointPublicSubnetIds (AC-01-04): this account's
+# default VPC and its default-for-AZ public subnets, confirmed via
+# `aws ec2 describe-vpcs --filters Name=is-default,Values=true` and
+# `aws ec2 describe-subnets --filters Name=default-for-az,Values=true`
+# 2026-09-19 -- re-verify these if the account's default VPC is ever
+# deleted/recreated, per infra/template.yaml's own parameter comment.
+# CAPABILITY_NAMED_IAM (upgraded from CAPABILITY_IAM) is required because
+# CheckpointAgentTaskExecutionRole/CheckpointAgentTaskRole set an explicit
+# RoleName.
+parameter_overrides = "BedrockModelId=meta.llama3-70b-instruct-v1:0 CheckpointVpcId=vpc-09ea2b33ec846aaa9 CheckpointPublicSubnetIds=subnet-0bb0ca4526dbcd8c2\\,subnet-0c07d318c76306d9a\\,subnet-0c12e5942b25c866b"
+
+[default.global.parameters]
+region = "ap-south-1"
