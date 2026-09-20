@@ -103,12 +103,23 @@ see "Rollout" below for why that's deliberately separate.
   owns them; this package only calls them.
 - The `services/api/*` HTTP handler class and its `contracts/openapi.yaml`/
   `infra/template.yaml` wiring. Deliberately separate: `services/api/purchases.py`
-  (WP-08/09) was already merged unwired for the same reason (it needs a real
+  (WP-08/09) was already merged unwired for the same reason — it needs a real
   deployment cycle with P1's account to actually prove, not just more local
-  code), and idempotency-key handling for these new mutations (a real,
-  non-negotiable product rule per CLAUDE.md) deserves its own reviewed pass
-  rather than being rushed in alongside this already-large application-layer
-  change. Fast-follow, tracked here so it isn't lost.
+  code. Fast-follow, tracked here so it isn't lost.
+
+**Revision note (2026-09-20, second pass):** idempotency-key handling for
+`create_conversation`, `add_turn`, and `open_session` is now implemented
+(same `idempotency_request_hash`/`IdempotencyRecord`/`idempotency_key` pattern
+`services/application/purchase.py` already uses) — moved out of "out of
+scope" since it belongs at the use-case layer regardless of when the HTTP
+handler lands, and leaving a non-negotiable product rule (CLAUDE.md: "Every
+mutation requires an idempotency key") unimplemented at this layer risked it
+being forgotten later. One judgment call worth recording: `open_session`'s
+replay path re-presigns a fresh WSS URL for the existing session record
+rather than returning a stored one, because presigning has no side effects
+and a stored URL would already be stale (the whole point of a presigned URL
+is a short expiry) — idempotency here guards against a second session
+*record*, not a byte-identical URL string.
 
 ## User flow and UI states
 
@@ -192,10 +203,15 @@ Transcribe/Polly credentials in logs.
 
 ## Idempotency, concurrency, timeout, and retry behavior
 
-`POST /conversations/{id}/turns` requires `Idempotency-Key`. Voice-session
-submit is exactly-once by construction (`may_submit`'s status/hash guard, not
-a separate idempotency key). Session expiry and conversation-version staleness
-follow WP-02's existing `is_expired`/`binding_is_current` functions verbatim.
+`create_conversation`, `add_turn`, and `open_session` all require an
+idempotency key at the use-case layer now (implemented — see the revision
+note above): same key + same payload replays the original result; same key
++ different payload returns `IdempotencyPayloadMismatch`. Voice-session
+submit is separately exactly-once by construction (`may_submit`'s
+status/hash guard, not an idempotency key — a session can only ever be
+submitted once regardless of key reuse). Session expiry and
+conversation-version staleness follow WP-02's existing
+`is_expired`/`binding_is_current` functions verbatim.
 
 ## Failure modes and user-visible errors
 
@@ -265,9 +281,9 @@ the typed client at the real base URL.
   producing a real Polly/Transcribe request ID, recorded in `docs/evidence/`.
   This is the actual fix for P1's blocker and can only happen once the
   fast-follow handler/infra PR lands and P1 deploys it.
-- AC-05-A1-04: **Partially met** — every failure mode is covered at the
-  use-case layer (unit tests); HTTP-layer contract tests land with the
-  fast-follow handler.
+- AC-05-A1-04: **Met at the use-case layer** — every failure mode is
+  covered, including idempotency replay/mismatch (18 tests total); HTTP-layer
+  contract tests land with the fast-follow handler.
 - AC-05-A1-05: **Met.** No changes to `web/**`; WP-05's existing 65 frontend
   tests are untouched by this package.
 
