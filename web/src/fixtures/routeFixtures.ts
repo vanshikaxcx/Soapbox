@@ -8,23 +8,69 @@
  */
 import type {
   BasketSummary,
+  ConversationResponder,
   ConversationTurn,
   EvidenceRecord,
   ExactQuote,
   ProgressStage,
   PurchaseStatus,
   RecoveryCase,
+  UnresolvedExtraction,
 } from "../components/cards/types";
+import { formatQuantity } from "../components/cards/format";
+import { fakeExtractFromText } from "./fixtureExtractor";
 
 export const fixtureConversation: ConversationTurn[] = [
   { id: "t1", role: "assistant", text: "What would you like to buy today?" },
-  { id: "t2", role: "shopper", text: "2 litres of milk and a loaf of bread." },
-  {
-    id: "t3",
-    role: "assistant",
-    text: "Got it — comparing that across two nearby stores now.",
-  },
 ];
+
+const UNRESOLVED_COPY: Record<
+  UnresolvedExtraction["reason_code"],
+  (fragment: string) => string
+> = {
+  no_quantity_detected: (fragment) => `how much of "${fragment}" you need`,
+  ambiguous_item: (fragment) => `which "${fragment}" you mean`,
+  item_limit_exceeded: (fragment) =>
+    `"${fragment}" - that's more than I can compare at once (max 4 items)`,
+  extraction_unavailable: () => "that - please try again",
+  no_items_detected: () => "anything I could shop for in that",
+};
+
+/**
+ * Placeholder for P2's real `/tasks/extract` (WP-05, P2's slice) - runs the
+ * exact same `ExtractionOutcome` shape through `fakeExtractFromText`, then
+ * turns it into conversation copy. Per the extraction contract, an
+ * unresolved item never comes with candidate options to choose from, so it's
+ * re-prompted through this same canonical text path - not a fixed-choice
+ * QuestionPrompt, which stays reserved for a genuine multiple-choice case.
+ */
+export const fixtureConversationResponder: ConversationResponder = (text) => {
+  const outcome = fakeExtractFromText(text);
+  const parts: string[] = [];
+
+  if (outcome.items.length > 0) {
+    const summary = outcome.items
+      .map((item) => `${formatQuantity(item.quantity)} ${item.name}`)
+      .join(", ");
+    parts.push(`Got it — comparing ${summary} across two nearby stores now.`);
+  }
+  if (outcome.unresolved.length > 0) {
+    const asks = outcome.unresolved.map((entry) =>
+      UNRESOLVED_COPY[entry.reason_code](entry.raw_fragment),
+    );
+    parts.push(
+      `I didn't catch ${asks.join(", or ")} — could you tell me again?`,
+    );
+  }
+
+  return Promise.resolve({
+    turn: {
+      id: `a-${crypto.randomUUID()}`,
+      role: "assistant",
+      text: parts.join(" "),
+    },
+  });
+};
 
 export const fixtureBaskets: BasketSummary[] = [
   {
