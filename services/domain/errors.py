@@ -205,6 +205,25 @@ class InvalidRecord(DomainError):
     detail: str
 
 
+# -- conversation and voice (WP-05-A1) --------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class VoiceSessionExpired(DomainError):
+    code: ClassVar[str] = "voice_session_expired"
+    voice_session_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class VoiceSessionAlreadyResolved(DomainError):
+    """Submitted or cancelled already. A second submit is not a retry of the
+    first -- the transcript it captured either landed or it did not, and
+    replaying silently over it would apply someone's speech to the wrong turn."""
+
+    code: ClassVar[str] = "voice_session_already_resolved"
+    voice_session_id: str
+
+
 def is_error(value: object) -> bool:
     """True when a domain function returned an error rather than a value."""
     return isinstance(value, DomainError)
@@ -237,5 +256,7 @@ __all__ = [
     "QuoteNotConstructible",
     "SubstitutionNotPermitted",
     "VersionConflict",
+    "VoiceSessionAlreadyResolved",
+    "VoiceSessionExpired",
     "is_error",
 ]

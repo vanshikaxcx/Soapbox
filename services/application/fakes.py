@@ -28,6 +28,11 @@ from services.application.ports import (
     Key,
     Write,
 )
+from services.application.ports.speech import (
+    SpeechSynthesisError,
+    SpeechSynthesisResult,
+    TranscribeSessionUrl,
+)
 from services.domain.catalog import Observation
 from services.domain.errors import DomainError
 from services.domain.money import Charge
@@ -167,11 +172,61 @@ class ScriptedMerchant:
         return self._fees
 
 
+class FixedTranscribeUrlSigner:
+    """Never calls AWS. Returns a URL a test can assert on, unchanged per call."""
+
+    def __init__(
+        self, url: str = "wss://transcribestreaming.ap-south-1.amazonaws.com:8443/x"
+    ) -> None:
+        self._url = url
+        self.calls: list[tuple[str, int]] = []
+
+    def presign(
+        self, *, language_code: str, media_sample_rate_hz: int, expires_in_seconds: int
+    ) -> TranscribeSessionUrl:
+        self.calls.append((language_code, media_sample_rate_hz))
+        return TranscribeSessionUrl(url=self._url, expires_in_seconds=expires_in_seconds)
+
+
+class ScriptedSpeechSynthesizer:
+    """Answers from a script, including a failure, without ever calling Polly."""
+
+    def __init__(self, result: SpeechSynthesisResult | SpeechSynthesisError | None = None) -> None:
+        self._result = result or SpeechSynthesisResult(
+            audio_bytes=b"fake-mp3-bytes", content_type="audio/mpeg"
+        )
+        self.synthesize_calls: list[str] = []
+
+    def synthesize(self, *, text: str) -> SpeechSynthesisResult | SpeechSynthesisError:
+        self.synthesize_calls.append(text)
+        return self._result
+
+
+class MemoryAudioSink:
+    """An in-memory audio sink so a test can assert what was actually stored."""
+
+    def __init__(self) -> None:
+        self._items: dict[str, tuple[bytes, str]] = {}
+        self.save_calls = 0
+
+    def save(self, turn_id: str, content: bytes, content_type: str) -> str:
+        self.save_calls += 1
+        key = f"{turn_id}/{self.save_calls}"
+        self._items[key] = (content, content_type)
+        return key
+
+    def playback_url(self, audio_key: str, expires_in_seconds: int) -> str:
+        return f"https://audio.test/{audio_key}?expires={expires_in_seconds}"
+
+
 __all__ = [
     "AllowAllPolicy",
     "DenyPolicy",
     "FixedClock",
+    "FixedTranscribeUrlSigner",
+    "MemoryAudioSink",
     "MemoryStore",
     "ScriptedMerchant",
+    "ScriptedSpeechSynthesizer",
     "SequentialIds",
 ]
