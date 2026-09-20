@@ -6,6 +6,7 @@ schema-constrained results. It never authorizes payment or approval actions.
 
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -13,6 +14,8 @@ from typing import Any
 from services.agent.config import ITEM_FETCH_DEADLINE_SECONDS
 from services.merchants.models import ItemQuery, Location, Mode, Observation
 from services.merchants.registry import build_registry
+
+logger = logging.getLogger(__name__)
 
 
 def search_merchants(
@@ -49,8 +52,14 @@ def search_merchants(
             outcome = future.result()
             if isinstance(outcome, list):
                 results.extend(outcome)
-            # Typed MerchantError is dropped here; the caller (search
-            # workflow, owned by P2/P3 jointly) is responsible for surfacing
-            # partial-result coverage rather than failing the whole search.
+            else:
+                # Typed MerchantError is dropped from the returned list here;
+                # the caller (search workflow, owned by P2/P3 jointly) is
+                # responsible for surfacing partial-result coverage rather
+                # than failing the whole search. Logged, not silently lost,
+                # so a live-source failure stays observable per the
+                # product's honesty requirement even though this tool's
+                # schema-constrained return shape can't carry it.
+                logger.warning("merchant search failed: %s", outcome.model_dump(mode="json"))
 
     return [obs.model_dump(mode="json") for obs in results]
