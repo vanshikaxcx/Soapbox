@@ -41,6 +41,11 @@ ALLOWED_STDLIB = {
     # how *DynamoDB* retries, and nothing above this layer knows that.
     "hashlib",
     "importlib",
+    # WP-05-A1's audio sink names each stored object with a random suffix, so
+    # two uploads for one turn cannot collide. That name is the storage
+    # adapter's own concern -- nothing above this layer knows an object key
+    # exists -- so it belongs here rather than being passed down.
+    "uuid",
     # The composition root is exactly, and only, where the environment is read.
     "os",
     "typing",

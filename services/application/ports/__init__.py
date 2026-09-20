@@ -27,17 +27,18 @@ from services.application.ports.core import (
 )
 from services.application.ports.events import EventBus, PublishRejected
 from services.application.ports.id_generator import IdGenerator
+from services.application.ports.index import (
+    IndexedDocument,
+    IndexName,
+    IndexUnavailable,
+    SearchIndex,
+)
 from services.application.ports.speech import (
     SpeechSynthesisError,
     SpeechSynthesisResult,
     SpeechSynthesizer,
     TranscribeSessionUrl,
     TranscribeUrlSigner,
-from services.application.ports.index import (
-    IndexedDocument,
-    IndexName,
-    IndexUnavailable,
-    SearchIndex,
 )
 from services.application.ports.workflows import (
     TERMINAL_STATES,

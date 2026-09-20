@@ -47,7 +47,13 @@ class TranscribePresignAdapter:
         query = "&".join(f"{key}={value}" for key, value in params.items())
         request = AWSRequest(method="GET", url=f"https://{host}{path}?{query}")
         SigV4QueryAuth(
-            self._credentials.get_frozen_credentials(),
+            # WP-07 installs boto3-stubs, which types this call for the first
+            # time and exposes an inconsistency inside the stubs themselves:
+            # get_frozen_credentials() is declared to return FrozenCredentials
+            # while SigV4QueryAuth accepts Credentials | ReadOnlyCredentials.
+            # At runtime botocore returns a ReadOnlyCredentials namedtuple and
+            # this call is correct, so the ignore is narrowed to the argument.
+            self._credentials.get_frozen_credentials(),  # type: ignore[arg-type]
             "transcribe",
             self._region,
             expires=expires_in_seconds,
