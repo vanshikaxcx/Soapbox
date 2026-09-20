@@ -106,27 +106,32 @@ def test_every_batched_event_source_reports_item_failures(template: dict[str, An
         )
 
 
-def test_the_functions_are_not_wired_yet_and_that_is_recorded(
+def test_the_job_consumer_is_still_absent_and_the_reason_is_recorded(
     template: dict[str, Any],
 ) -> None:
-    """The rule above currently holds over nothing, and says so out loud.
+    """The publisher is wired; the consumer is not, and that is deliberate.
 
-    A vacuous assertion that nobody knows is vacuous is worse than no assertion.
+    ``job_consumer.lambda_handler`` calls ``build_workflow_engine()``, which
+    requires ``PROOFPATH_STATE_MACHINE_ARN`` -- and a state machine needs a task
+    to run. No such handler exists in any package, and WP-07's spec names the
+    controller and the execution naming but never the task itself.
 
-    The functions are still undeclared, but the reason has changed. WP-01 had
-    solved the packaging problem -- a ``uv build --wheel`` step in
-    scripts/proofpath.ps1 injected ``services/**`` into each function's build
-    output, so a worker could import across the tree. PR #18 removed that step
-    along with the checkpoint infra it served, so the blocker is open again.
-
-    When it is closed and the publisher and consumer are added, this test fails,
-    and whoever is holding it then has to delete it *and* satisfy the rule above
-    -- which is the order those two things should happen in.
+    Filling that hole with a Pass state would report success for work nobody
+    did, which is the failure this whole package exists to prevent. So the
+    consumer waits for its task to be specified, and this test is what stops
+    that waiting from being forgotten: when the task lands and the consumer is
+    declared, this fails, and whoever is holding it deletes it *and* satisfies
+    the batched-source rule above -- in that order.
     """
-    assert batched_event_sources(template) == [], (
-        "a batched event source now exists: delete this test, and make sure "
-        f"{REPORT_BATCH_ITEM_FAILURES} and the INSERT/OUTBOX# stream filter are "
-        "declared on it"
+    declared = resources(template)
+    assert "JobConsumerFunction" not in declared, (
+        "the job consumer now exists: delete this test, and make sure its SQS "
+        f"event source declares {REPORT_BATCH_ITEM_FAILURES} and that a state "
+        "machine with a real task backs PROOFPATH_STATE_MACHINE_ARN"
+    )
+    assert "ProofPathStateMachine" not in declared, (
+        "a state machine now exists: confirm its task does real work rather "
+        "than passing, then delete this test"
     )
 
 
