@@ -45,6 +45,7 @@ TAG_PAYMENT_KEY = "proofpath.payment_key.v1"
 TAG_PAYMENT_REQUEST = "proofpath.payment_request.v1"
 TAG_ORDER_KEY = "proofpath.order_key.v1"
 TAG_BODY = "proofpath.body.v1"
+TAG_VOICE_TRANSCRIPT = "proofpath.voice_transcript.v1"
 
 ALL_TAGS = (
     TAG_QUOTE,
@@ -56,6 +57,7 @@ ALL_TAGS = (
     TAG_PAYMENT_REQUEST,
     TAG_ORDER_KEY,
     TAG_BODY,
+    TAG_VOICE_TRANSCRIPT,
 )
 
 
@@ -154,6 +156,7 @@ __all__ = [
     "TAG_PAYMENT_KEY",
     "TAG_PAYMENT_REQUEST",
     "TAG_QUOTE",
+    "TAG_VOICE_TRANSCRIPT",
     "body_hash",
     "canonical_json",
     "digest",

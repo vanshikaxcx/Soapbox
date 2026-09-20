@@ -42,6 +42,8 @@ PUBLIC_API: dict[str, set[str]] = {
         "ContradictoryProviderFact",
         "FactIgnoredStale",
         "InvalidRecord",
+        "VoiceSessionExpired",
+        "VoiceSessionAlreadyResolved",
     },
     "services.domain.ids": {
         "ID_PATTERN",
@@ -93,6 +95,7 @@ PUBLIC_API: dict[str, set[str]] = {
         "TAG_PAYMENT_REQUEST",
         "TAG_ORDER_KEY",
         "TAG_BODY",
+        "TAG_VOICE_TRANSCRIPT",
         "canonical_json",
         "digest",
         "body_hash",

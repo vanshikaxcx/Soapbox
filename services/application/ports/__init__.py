@@ -25,6 +25,13 @@ from services.application.ports.core import (
     read,
 )
 from services.application.ports.id_generator import IdGenerator
+from services.application.ports.speech import (
+    SpeechSynthesisError,
+    SpeechSynthesisResult,
+    SpeechSynthesizer,
+    TranscribeSessionUrl,
+    TranscribeUrlSigner,
+)
 
 __all__ = [
     "Action",
@@ -36,7 +43,12 @@ __all__ = [
     "Key",
     "MerchantPort",
     "PolicyPort",
+    "SpeechSynthesisError",
+    "SpeechSynthesisResult",
+    "SpeechSynthesizer",
     "StateStore",
+    "TranscribeSessionUrl",
+    "TranscribeUrlSigner",
     "Write",
     "read",
 ]
