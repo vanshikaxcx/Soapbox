@@ -57,6 +57,16 @@ class Observation(BaseModel):
     price_paise: int
     in_stock: bool
     verified_location: Location
+    # Same completeness pattern as FeeAssessment.completeness below, applied
+    # to location rather than fees: "verified" only when the merchant's own
+    # response actually confirmed this observation's locality (concretely,
+    # verified_location.merchant_zone_id is populated from a real
+    # server-derived identifier, not echoed from the request). "unverified"
+    # when a connector returns results without ever confirming location
+    # server-side (e.g. Zepto today) -- distinct from an unknown/estimated
+    # fee, but the same underlying rule: unconfirmed is never presented as
+    # confirmed.
+    location_completeness: str  # "verified" | "unverified"
     fetch_time: datetime
     evidence_key: str
     extraction_status: ExtractionStatus
