@@ -46,6 +46,10 @@ class FixtureMerchant(Merchant):
                 price_paise=row["price_paise"],
                 in_stock=row["in_stock"],
                 verified_location=location,
+                # Fixture data is deterministic, known-good ground truth by
+                # construction -- always verified, distinctly from a live
+                # connector that actually failed to confirm location.
+                location_completeness="verified",
                 fetch_time=datetime.now(UTC),
                 evidence_key=f"fixture:{self.name}:{row['sku']}",
                 extraction_status=ExtractionStatus.OK,
@@ -66,6 +70,7 @@ class FixtureMerchant(Merchant):
             price_paise=row["price_paise"],
             in_stock=row["in_stock"],
             verified_location=location,
+            location_completeness="verified",  # see search()'s comment above
             fetch_time=datetime.now(UTC),
             evidence_key=f"fixture:{self.name}:{row['sku']}",
             extraction_status=ExtractionStatus.OK,
