@@ -24,6 +24,8 @@ from services.application.ports.speech import (
     SpeechSynthesizer,
     TranscribeUrlSigner,
 )
+from services.application.purchase import IdempotencyRecord
+from services.application.purchase import idempotency_key as _idempotency_key
 from services.domain.canonical import TAG_VOICE_TRANSCRIPT, digest
 from services.domain.conversation import (
     Conversation,
@@ -36,10 +38,11 @@ from services.domain.conversation import (
     is_expired,
     may_submit,
 )
-from services.domain.errors import DomainError, VersionConflict
+from services.domain.errors import DomainError, IdempotencyPayloadMismatch, VersionConflict
 from services.domain.errors import VoiceSessionAlreadyResolved as SessionAlreadyResolved
 from services.domain.errors import VoiceSessionExpired as SessionExpired
 from services.domain.ids import Record
+from services.domain.keys import idempotency_request_hash
 
 _VOICE_SESSION_TTL_SECONDS = 60  # one utterance, per the product spec's cap
 
@@ -77,7 +80,23 @@ class ConversationUseCases:
         self._clock = clock
         self._ids = ids
 
-    def create_conversation(self, *, owner_id: str) -> Conversation:
+    def create_conversation(self, *, owner_id: str, idempotency: str) -> Conversation | DomainError:
+        request_hash = idempotency_request_hash(
+            method="POST",
+            path_template="/conversations",
+            path_params={},
+            owner_id=owner_id,
+            body={},
+        )
+        idem_key = _idempotency_key(owner_id, "create_conversation", idempotency)
+        stored = read(self._store, idem_key, IdempotencyRecord)
+        if stored is not None:
+            if stored.request_hash != request_hash:
+                return IdempotencyPayloadMismatch(key=idempotency)
+            existing = read(self._store, conversation_key(stored.result_ref), Conversation)
+            if existing is not None:
+                return existing
+
         conversation = Conversation(
             conversation_id=self._ids.new_id("conversation"), owner_id=owner_id
         )
@@ -88,7 +107,15 @@ class ConversationUseCases:
                     item=conversation,
                     condition=Condition.MUST_NOT_EXIST,
                     reason="create the conversation once",
-                )
+                ),
+                Write(
+                    key=idem_key,
+                    item=IdempotencyRecord(
+                        request_hash=request_hash, result_ref=conversation.conversation_id
+                    ),
+                    condition=Condition.MUST_NOT_EXIST,
+                    reason="record this request so a retry replays instead of duplicating",
+                ),
             ]
         )
         return conversation
@@ -111,10 +138,33 @@ class ConversationUseCases:
         input_kind: InputKind,
         reply_to_question_id: str | None,
         audio_key: str | None,
+        idempotency: str,
     ) -> Turn | DomainError:
         conversation = self.read_conversation(owner_id=owner_id, conversation_id=conversation_id)
         if isinstance(conversation, DomainError):
             return conversation
+
+        body = {
+            "speaker": str(speaker),
+            "text": text,
+            "input_kind": str(input_kind),
+            "reply_to_question_id": reply_to_question_id,
+        }
+        request_hash = idempotency_request_hash(
+            method="POST",
+            path_template="/conversations/{id}/turns",
+            path_params={"id": conversation_id},
+            owner_id=owner_id,
+            body=body,
+        )
+        idem_key = _idempotency_key(owner_id, "add_turn", idempotency)
+        stored = read(self._store, idem_key, IdempotencyRecord)
+        if stored is not None:
+            if stored.request_hash != request_hash:
+                return IdempotencyPayloadMismatch(key=idempotency)
+            existing_turn = read(self._store, turn_key(conversation_id, stored.result_ref), Turn)
+            if existing_turn is not None:
+                return existing_turn
 
         turn = Turn(
             turn_id=self._ids.new_id("turn"),
@@ -133,7 +183,13 @@ class ConversationUseCases:
                     item=turn,
                     condition=Condition.MUST_NOT_EXIST,
                     reason="record the turn once",
-                )
+                ),
+                Write(
+                    key=idem_key,
+                    item=IdempotencyRecord(request_hash=request_hash, result_ref=turn.turn_id),
+                    condition=Condition.MUST_NOT_EXIST,
+                    reason="record this request so a retry replays instead of duplicating",
+                ),
             ]
         )
         return turn
@@ -166,6 +222,7 @@ class VoiceSessionUseCases:
         owner_id: str,
         conversation_id: str,
         conversation_version: int,
+        idempotency: str,
         question_id: str | None = None,
         target_id: str | None = None,
         target_version: int | None = None,
@@ -182,6 +239,40 @@ class VoiceSessionUseCases:
             # Rebinding to a question the conversation has already moved past
             # is exactly what WP-02's binding rule exists to prevent.
             return NotFound("question")
+
+        body = {
+            "conversation_version": conversation_version,
+            "question_id": question_id,
+            "target_id": target_id,
+            "target_version": target_version,
+            "intent_id": intent_id,
+            "intent_revision": intent_revision,
+            "language": language,
+        }
+        request_hash = idempotency_request_hash(
+            method="POST",
+            path_template="/voice/sessions",
+            path_params={},
+            owner_id=owner_id,
+            body=body,
+        )
+        idem_key = _idempotency_key(owner_id, "open_voice_session", idempotency)
+        stored = read(self._store, idem_key, IdempotencyRecord)
+        if stored is not None:
+            if stored.request_hash != request_hash:
+                return IdempotencyPayloadMismatch(key=idempotency)
+            existing_session = read(self._store, voice_session_key(stored.result_ref), VoiceSession)
+            if existing_session is not None:
+                # Idempotency guards against a second *session record*, not a
+                # second signed URL -- presigning has no side effects, so a
+                # replay safely mints a fresh URL for the same session rather
+                # than returning an unusable placeholder.
+                presigned = self._signer.presign(
+                    language_code=existing_session.language,
+                    media_sample_rate_hz=16_000,
+                    expires_in_seconds=_VOICE_SESSION_TTL_SECONDS,
+                )
+                return VoiceSessionOpened(session=existing_session, wss_url=presigned.url)
 
         now = self._clock.now()
         session = VoiceSession(
@@ -204,7 +295,15 @@ class VoiceSessionUseCases:
                     item=session,
                     condition=Condition.MUST_NOT_EXIST,
                     reason="create the voice session once",
-                )
+                ),
+                Write(
+                    key=idem_key,
+                    item=IdempotencyRecord(
+                        request_hash=request_hash, result_ref=session.voice_session_id
+                    ),
+                    condition=Condition.MUST_NOT_EXIST,
+                    reason="record this request so a retry replays instead of duplicating",
+                ),
             ]
         )
         presigned = self._signer.presign(
