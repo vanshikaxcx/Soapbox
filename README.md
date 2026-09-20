@@ -2,22 +2,44 @@
 
 ProofPath is a voice-first web application for comparing locality-specific grocery baskets and demonstrating safe simulated checkout with evidence-based recovery. Checkout, payment, orders, callbacks, and refunds are simulated: **Simulated checkout · no money moved · no retailer order placed.**
 
+The project is built by a four-person team through a sequence of reviewed work packages (WPs), each scoped, specified, implemented, and merged independently. See [Governance and authority](#governance-and-authority) for the documents that define scope and ownership, and [Project status](#project-status) for what is implemented today.
+
 ## Governance and authority
 
 - The settled product and architecture authority is [docs/PROOFPATH-SPEC.md](docs/PROOFPATH-SPEC.md).
 - The execution plan, work packages, ownership, and review gates are in [Final idea and archi/PROOFPATH-IMPLEMENTATION-POA.md](Final%20idea%20and%20archi/PROOFPATH-IMPLEMENTATION-POA.md).
-- [docs/STATUS.md](docs/STATUS.md) is the current package-status ledger; [LEARNING.md](LEARNING.md) is append-only.
+- [docs/STATUS.md](docs/STATUS.md) is the canonical package-status ledger; [LEARNING.md](LEARNING.md) is append-only.
 - `ideation/` and the retained `Final idea and archi/PROOFPATH-SPEC.md` are historical material and are not implementation authority.
+- [AGENTS.md](AGENTS.md) defines the operating rules that all contributors and coding agents follow, including the ownership boundaries below.
+
+## Project status
+
+Work packages WP-00 through WP-09 are implemented and merged into `main`. In summary:
+
+- **WP-00 (P4):** repository, toolchain, and contract baseline. PowerShell command surface, Vite web scaffold, SAM-based health Lambda, deterministic CI.
+- **WP-01 (P4):** cloud viability checkpoint. AWS OIDC federation for CI, DynamoDB-backed checkpoint API behind Cognito, durable job/outbox chain, Bedrock/Polly/Transcribe adapters, Amplify hosting, OpenSearch template. Delivered as a conditional pass with two accepted, documented environmental exceptions (an AWS Organization service-control-policy restriction outside this project's control, and a merchant-side network block unrelated to the code).
+- **WP-02 (P3):** core commerce domain. Pure domain rules, canonical hashing, and transaction-state invariants.
+- **WP-03 (P1):** web shell, Cognito PKCE authentication, and a generated, typed API client.
+- **WP-04 (P2):** agent container and live merchant connectors (Blinkit, Zepto).
+- **WP-05 (P1):** text, voice, photo, and usual-basket intake, built against fixtures ahead of the real extraction and speech adapters.
+- **WP-06 (P2):** search comparison and basket repair built on WP-02 and WP-04's extraction contract.
+- **WP-07 (P4):** durable workflow and job-transport infrastructure supporting preparation, checkout, and recovery.
+- **WP-08 (P3):** preparation, exact quote hashing, and the dedicated touch-approval control.
+- **WP-09 (P3):** the simulated provider, durable checkout, and callback ingestion.
+
+WP-10 (P4, callback reconciliation, recovery, guidance, case, and export) has not started; it is the sole remaining dependency for WP-11 (P1, the integrated UI journey and operator console). WP-12 (P4, release and teardown) follows once every preceding package is complete.
+
+`docs/STATUS.md` carries the full acceptance-criteria detail per package; treat it, not this summary, as authoritative for any specific claim.
 
 ## Current baseline
 
-WP-00 Stage 5 establishes the baseline health Lambda, Vite production build, and Chromium smoke. It does not implement product flows, a runtime browser API client, authentication, cloud deployment, or LocalStack.
+WP-00 established the baseline health Lambda, Vite production build, and Chromium smoke that every later package builds on. The setup and command instructions below describe that unchanged baseline toolchain.
 
 ### Stage 2 prerequisites and commands
 
 Install these exact prerequisites before setup: [Node.js `24.21.0`](https://nodejs.org/dist/v24.21.0/), npm `12.0.2` (`npm install --global npm@12.0.2` after installing Node), [uv `0.12.13`](https://docs.astral.sh/uv/getting-started/installation/), [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell), and [SAM CLI `1.164.0`](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html).
 
-CPython `3.12.14` has **no official binary installer on any platform** — Python 3.12 entered upstream "security fixes only" mode and python.org only ships source tarballs for this version. After installing uv, use uv's own independent Python toolchain instead:
+CPython `3.12.14` has **no official binary installer on any platform**: Python 3.12 entered upstream "security fixes only" mode and python.org only ships source tarballs for this version. After installing uv, use uv's own independent Python toolchain instead:
 
 ```text
 uv python install 3.12.14 --default
@@ -68,10 +90,13 @@ pwsh ./scripts/proofpath.ps1 verify-gate-a
 pwsh ./scripts/proofpath.ps1 verify-clean-clone
 ```
 
-`verify-gate-a` runs every non-mutating check in one pass — versions, `openapi-check`, `format-check`, `lint`, `typecheck`, `test`, `security`, `build`, and `web-smoke` — then asserts the working tree has no tracked changes. `verify-clean-clone` rejects an already-dirty checkout, then runs `setup` followed by `verify-gate-a`; it is the command a Windows or macOS clean-clone evidence run executes from a freshly cloned directory.
+`verify-gate-a` runs every non-mutating check in one pass (versions, `openapi-check`, `format-check`, `lint`, `typecheck`, `test`, `security`, `build`, and `web-smoke`), then asserts the working tree has no tracked changes. `verify-clean-clone` rejects an already-dirty checkout, then runs `setup` followed by `verify-gate-a`; it is the command a Windows or macOS clean-clone evidence run executes from a freshly cloned directory.
 
 ## Ownership boundary
 
-P3 owns transaction truth and semantics, simulator behavior, provider-fact contracts, transaction-domain reconciliation rules, and commerce invariants. P4 owns callback ingestion, durable reconciliation/recovery machinery, recovery handlers, and the guidance/case/export backend. P1 owns recovery/export presentation.
+- **P1 (experience and voice)** owns `web/**`, shared UI cards, the polling client, text/voice/photo/usual-basket interactions, recovery and export presentation, accessibility, and frontend end-to-end scenarios.
+- **P2 (shopping intelligence)** owns `services/agent/**` and `services/merchants/**`: extraction, merchant connectors, matching, normalization, fees, comparison, repair, and merchant evidence.
+- **P3 (transaction safety)** owns transaction truth and semantics in `services/domain/**` and `services/simulator/**`: simulator behavior, provider-fact contracts, transaction-domain reconciliation rules, and commerce invariants.
+- **P4 (platform, durability, and recovery)** owns `infra/**`, `policies/**`, `.github/**`: AWS adapters, job transport and workers, callback ingestion, durable reconciliation and recovery machinery, recovery handlers, the guidance/case/export backend, CI/CD, and releases.
 
 Follow [AGENTS.md](AGENTS.md) and the approved work-package process before making changes.
