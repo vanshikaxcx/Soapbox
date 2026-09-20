@@ -26,3 +26,13 @@
 /tests/** text eol=lf
 /workflows/** text eol=lf
 /.github/** text eol=lf
+
+# Binary assets must never be run through text/EOL normalization,
+# even under a directory pattern above that marks text eol=lf.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
