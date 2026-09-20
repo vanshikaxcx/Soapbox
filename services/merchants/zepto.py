@@ -99,6 +99,11 @@ class ZeptoMerchant(PlaywrightMerchant):
                         price_paise=price_paise,
                         in_stock=not out_of_stock,
                         verified_location=location,
+                        # Always unverified: this connector doesn't set a
+                        # pincode before searching (see module docstring's
+                        # TODO(spike)) -- results reflect Zepto's own
+                        # IP-inferred default, not the requested locality.
+                        location_completeness="unverified",
                         fetch_time=datetime.now(UTC),
                         evidence_key=evidence_key,
                         extraction_status=ExtractionStatus.OK,
@@ -159,6 +164,7 @@ class ZeptoMerchant(PlaywrightMerchant):
                 price_paise=int(round(float(offer.get("price", 0)) * 100)),
                 in_stock=offer.get("availability", "").endswith("InStock"),
                 verified_location=location,
+                location_completeness="unverified",  # see search's comment above
                 fetch_time=datetime.now(UTC),
                 evidence_key=self._capture_evidence(page.context, page),
                 extraction_status=ExtractionStatus.OK,
