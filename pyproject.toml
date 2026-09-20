@@ -14,6 +14,10 @@ dependencies = [
   "starlette>=1.3.1,<2",
   # services/merchants: live-connector browser automation (Blinkit/Zepto).
   "playwright>=1.49.1,<1.50",
+  # services/merchants/evidence.py: S3EvidenceSink (WP-01 AC-01-04), used
+  # only in the deployed Fargate task via build_evidence_sink(); local
+  # dev/test uses LocalDiskEvidenceSink and never imports this.
+  "boto3>=1.35,<2",
 ]
 
 [build-system]
@@ -67,6 +71,15 @@ files = ["services", "tests"]
 [[tool.mypy.overrides]]
 module = ["services.merchants.p3_merchant_port_adapter"]
 disable_error_code = ["attr-defined"]
+
+# boto3 ships no inline types and no stub package is installed; deliberate
+# per S3EvidenceSink's own S3ClientProtocol boundary (services/merchants/
+# evidence.py), which already keeps every typed call site off boto3's own
+# untyped client -- only the bare `import boto3` construction call needs
+# this override, not a repo-wide allowance for untyped imports.
+[[tool.mypy.overrides]]
+module = ["boto3", "boto3.*"]
+ignore_missing_imports = true
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
