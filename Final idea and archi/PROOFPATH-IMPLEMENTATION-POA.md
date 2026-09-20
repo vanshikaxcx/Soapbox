@@ -482,6 +482,7 @@ Implementation:
 - one FastAPI + Strands + Playwright container with health endpoint;
 - allowlisted tool wrappers and model schema validation;
 - independent connector modules so one merchant failure yields partial results rather than failing the search;
+- per-connector browser engine: Zepto on Lightpanda (no Cloudflare-class bot check, chosen for latency — no CSS/image/font/GPU rendering cost); Blinkit on real Chromium (needed to pass its Cloudflare TLS-fingerprint check, which Lightpanda deliberately won't impersonate). Both engines are one long-lived process per container, shared across tasks;
 - isolated browser context per task, cleanup in `finally`, safe evidence in S3, and typed errors;
 - deterministic connector fixtures for CI, visually labelled and never mixed with live results.
 
